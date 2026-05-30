@@ -29,10 +29,11 @@ import { imgUrlTrans } from '@/utils/imgUtils'
 import { dvMainStoreWithOut } from '@/store/modules/data-visualization/dvMain'
 import { getData } from '@/api/chart'
 import { parseJson } from '@/views/chart/components/js/util'
-import { mappingColor } from '@/views/chart/components/js/panel/common/common_table'
+import { mappingColorCustom } from '@/views/chart/components/js/panel/common/common_table'
 import { storeToRefs } from 'pinia'
 import ChartEmptyInfo from '@/views/chart/components/views/components/ChartEmptyInfo.vue'
 import ChartError from '@/views/chart/components/views/components/ChartError.vue'
+import { deepCopy } from '@/utils/utils'
 const dvMainStore = dvMainStoreWithOut()
 const { canvasViewInfo, mobileInPc, fullscreenFlag } = storeToRefs(dvMainStore)
 const state = reactive({
@@ -198,14 +199,22 @@ const conditionAdaptor = (chart: Chart) => {
   const conditions = threshold.tableThreshold ?? []
   if (conditions?.length > 0) {
     for (let i = 0; i < conditions.length; i++) {
-      const field = conditions[i]
+      const field = deepCopy(conditions[i])
       let defaultValueColor = null
-      const checkResult = mappingColor(
+      field.conditions.sort((a, b) => {
+        const aIsDefault = a.term === 'default'
+        const bIsDefault = b.term === 'default'
+
+        if (aIsDefault && !bIsDefault) return 1
+        if (!aIsDefault && bIsDefault) return -1
+        return 0
+      })
+      const checkResult = mappingColorCustom(
         dataRowNameSelect.value[field.field.name],
         defaultValueColor,
         field,
         'url'
-      )
+      ).color
       if (checkResult) {
         state.showUrl = checkResult
       }
@@ -216,7 +225,10 @@ const conditionAdaptor = (chart: Chart) => {
 const withInit = () => {
   if (element.value.propValue['urlList'] && element.value.propValue['urlList'].length > 0) {
     state.showUrl = element.value.propValue['urlList'][0].url
+  } else {
+    state.showUrl = null
   }
+
   initCarousel()
 }
 

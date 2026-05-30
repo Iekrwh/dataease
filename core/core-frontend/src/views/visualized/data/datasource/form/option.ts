@@ -74,6 +74,7 @@ export const dsTypes = [
     extraParams: '',
     charset: [
       'Default',
+      'US7ASCII',
       'GBK',
       'BIG5',
       'ISO-8859-1',
@@ -154,6 +155,9 @@ export interface Configuration {
   sshUserName: string
   sshType: string
   sshPassword: string
+  sslCA: string
+  sslCert: string
+  sslKey: string
 }
 
 export interface ApiConfiguration {

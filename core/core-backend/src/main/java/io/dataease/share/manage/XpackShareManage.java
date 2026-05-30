@@ -18,7 +18,9 @@ import io.dataease.exception.DEException;
 import io.dataease.i18n.Translator;
 import io.dataease.license.config.XpackInteract;
 import io.dataease.license.utils.LicenseUtil;
+import io.dataease.share.dao.auto.entity.CoreShareTicket;
 import io.dataease.share.dao.auto.entity.XpackShare;
+import io.dataease.share.dao.auto.mapper.CoreShareTicketMapper;
 import io.dataease.share.dao.auto.mapper.XpackShareMapper;
 import io.dataease.share.dao.ext.mapper.XpackShareExtMapper;
 import io.dataease.share.dao.ext.po.XpackSharePO;
@@ -54,8 +56,32 @@ public class XpackShareManage {
     @Resource
     private ShareTicketManage shareTicketManage;
 
+    @Resource(name = "coreShareTicketMapper")
+    private CoreShareTicketMapper coreShareTicketMapper;
+
     @Resource
     private SysParameterManage sysParameterManage;
+
+    @Resource
+    private ShareSecretManage shareSecretManage;
+
+    public void deleteByResource(Long resourceId) {
+        if (resourceId == null) {
+            return;
+        }
+        QueryWrapper<XpackShare> wrapper = new QueryWrapper<>();
+        wrapper.eq("resource_id", resourceId);
+        List<XpackShare> shares = xpackShareMapper.selectList(wrapper);
+        if (CollectionUtils.isEmpty(shares)) {
+            return;
+        }
+        xpackShareMapper.delete(wrapper);
+
+        List<String> uuidList = shares.stream().map(XpackShare::getUuid).collect(Collectors.toList());
+        QueryWrapper<CoreShareTicket> ticketQueryWrapper = new QueryWrapper<>();
+        ticketQueryWrapper.in("uuid", uuidList);
+        coreShareTicketMapper.delete(ticketQueryWrapper);
+    }
 
     public XpackShare queryByResource(Long resourceId) {
         Long userId = AuthUtils.getUser().getUserId();
@@ -65,14 +91,6 @@ public class XpackShareManage {
         return xpackShareMapper.selectOne(queryWrapper);
     }
 
-    public String queryPwd(Long resourceId, Long userId) {
-        QueryWrapper<XpackShare> queryWrapper = new QueryWrapper<>();
-        queryWrapper.eq("creator", userId);
-        queryWrapper.eq("resource_id", resourceId);
-        XpackShare xpackShare = xpackShareMapper.selectOne(queryWrapper);
-        if (ObjectUtils.isEmpty(xpackShare)) return null;
-        return xpackShare.getPwd();
-    }
 
     @Transactional
     public void switcher(Long resourceId) {
@@ -207,7 +225,7 @@ public class XpackShareManage {
         return pos.stream().map(po ->
                 new XpackShareGridVO(
                         po.getShareId(), po.getResourceId(), po.getName(), po.getCreator().toString(),
-                        po.getTime(), po.getExp(), 9, po.getExtFlag(),po.getExtFlag1(), po.getType())).toList();
+                        po.getTime(), po.getExp(), 9, po.getExtFlag(), po.getExtFlag1(), po.getType())).toList();
     }
 
     private XpackShareManage proxy() {
@@ -243,13 +261,18 @@ public class XpackShareManage {
             vo.setInIframeError(false);
             return vo;
         }
-        String linkToken = LinkTokenUtil.generate(xpackShare.getCreator(), xpackShare.getResourceId(), xpackShare.getExp(), xpackShare.getPwd(), xpackShare.getOid());
-        HttpServletResponse response = ServletUtils.response();
-        response.addHeader(AuthConstant.LINK_TOKEN_KEY, linkToken);
+
         Integer type = xpackShare.getType();
         String typeText = (ObjectUtils.isNotEmpty(type) && type == 1) ? "dashboard" : "dataV";
         TicketValidVO validVO = shareTicketManage.validateTicket(request.getTicket(), xpackShare);
-        return new XpackShareProxyVO(xpackShare.getResourceId(), xpackShare.getCreator(), linkExp(xpackShare), pwdValid(xpackShare, request.getCiphertext()), typeText, inIframeError, false, true, validVO);
+
+        boolean linkExp = linkExp(xpackShare);
+        boolean pwdValid = pwdValid(xpackShare, request.getCiphertext());
+
+        if (!linkExp && pwdValid && validVO.isTicketValid() && !validVO.isTicketExp()) {
+            generateLinkToken(xpackShare);
+        }
+        return new XpackShareProxyVO(xpackShare.getResourceId(), xpackShare.getCreator(), linkExp, pwdValid, typeText, inIframeError, false, true, validVO);
     }
 
     private boolean linkExp(XpackShare xpackShare) {
@@ -287,7 +310,20 @@ public class XpackShareManage {
         QueryWrapper<XpackShare> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("uuid", uuid);
         XpackShare xpackShare = xpackShareMapper.selectOne(queryWrapper);
-        return StringUtils.equals(xpackShare.getUuid(), uuid) && StringUtils.equals(xpackShare.getPwd(), pwd);
+        boolean valid = StringUtils.equals(xpackShare.getUuid(), uuid) && StringUtils.equals(xpackShare.getPwd(), pwd);
+        if (valid) {
+            generateLinkToken(xpackShare);
+        }
+        return valid;
+    }
+
+    private void generateLinkToken(XpackShare xpackShare) {
+        String defaultPwd = shareSecretManage.getDefaultPwd();
+        String secret = StringUtils.isBlank(xpackShare.getPwd()) ? defaultPwd : xpackShare.getPwd();
+        String linkToken = LinkTokenUtil.generate(xpackShare.getCreator(), xpackShare.getResourceId(), xpackShare.getExp(), secret, xpackShare.getOid());
+        HttpServletResponse response = ServletUtils.response();
+        assert response != null;
+        response.addHeader(AuthConstant.LINK_TOKEN_KEY, linkToken);
     }
 
     public Map<String, String> queryRelationByUserId(Long uid) {

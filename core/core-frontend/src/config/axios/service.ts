@@ -17,6 +17,7 @@ import { configHandler } from './refresh'
 import { isMobile, getLocale } from '@/utils/utils'
 import { useRequestStoreWithOut } from '@/store/modules/request'
 import { clearCache } from '@/utils/cacheUtil'
+import { securityConfig } from './hmac'
 
 type AxiosErrorWidthLoading<T> = T & {
   config: {
@@ -100,6 +101,7 @@ service.interceptors.request.use(
     if (config instanceof Promise) {
       config = await config
     }
+    await securityConfig(config, service.getUri(config))
     if (
       config.method === 'post' &&
       (config.headers as AxiosRequestHeaders)['Content-Type'] ===
@@ -138,9 +140,18 @@ service.interceptors.request.use(
       config.params = {}
       config.url = url
     }
-    config.cancelToken = new CancelToken(function executor(c) {
-      cancelMap[config.url] = c
-    })
+
+    if (config.url.endsWith('chartData/getData')) {
+      const chartKey = `chartData/getData/${(config.data as any).id}`
+      config.cancelToken = new CancelToken(function executor(c) {
+        cancelMap[chartKey] = c
+      })
+    } else {
+      config.cancelToken = new CancelToken(function executor(c) {
+        cancelMap[config.url] = c
+      })
+    }
+
     config.loading && tryShowLoading(permissionStore.getCurrentPath)
     return config
   },
@@ -185,9 +196,14 @@ service.interceptors.response.use(
         !response?.config?.url.startsWith('/xpackComponent/content') &&
         response?.data?.code !== 60003
       ) {
+        let errMsg = response.data.msg
+        if (errMsg?.includes('rsa info has been changed')) {
+          wsCache.delete('DataEaseKey')
+          errMsg = '密钥信息已变更，请刷新页面重试'
+        }
         ElMessage({
           type: 'error',
-          message: response.data.msg,
+          message: errMsg,
           showClose: true
         })
         if (response.data.code === 80001) {
@@ -248,9 +264,13 @@ service.interceptors.response.use(
 
     error.config.loading && tryHideLoading(permissionStore.getCurrentPath)
     if (header.has('DE-GATEWAY-FLAG')) {
+      const userToken = wsCache.get('user.token')
+      const inPlatformClient = !!wsCache.get('de-platform-client')
       clearCache()
-      const flag = header.get('DE-GATEWAY-FLAG')
-      localStorage.setItem('DE-GATEWAY-FLAG', flag.toString())
+      if (!(userToken && inPlatformClient)) {
+        const flag = header.get('DE-GATEWAY-FLAG')
+        localStorage.setItem('DE-GATEWAY-FLAG', flag.toString())
+      }
       let queryRedirectPath = '/workbranch/index'
       if (router.currentRoute.value.fullPath) {
         queryRedirectPath = router.currentRoute.value.fullPath as string
@@ -258,11 +278,15 @@ service.interceptors.response.use(
       router.push(`/login?redirect=${queryRedirectPath}`)
     }
     if (header.has('DE-FORBIDDEN-FLAG')) {
-      showMsg('当前用户权限配置已变更，请刷新页面', '-changed-')
+      showMsg('当前权限不允许访问，请联系管理员', '-changed-')
     }
+    /* if ([400, 401].includes(error?.response.status)) {
+      return Promise.reject(error)
+    } */
     if (error?.response.status === 400) {
       return Promise.reject(error)
     }
+
     return Promise.resolve()
   }
 )

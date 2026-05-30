@@ -45,6 +45,7 @@ public class ReportInfoVO implements Serializable {
 
     private List<String> emailList;
 
+    private List<String> dingtalkGroupList;
     private List<String> larkGroupList;
 
     private List<String> larksuiteGroupList;
@@ -64,4 +65,6 @@ public class ReportInfoVO implements Serializable {
     private Integer retryLimit;
 
     private Integer retryInterval;
+
+    private Integer dataPermission = 0;
 }

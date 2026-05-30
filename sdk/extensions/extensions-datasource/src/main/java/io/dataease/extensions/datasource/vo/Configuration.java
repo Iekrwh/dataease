@@ -4,6 +4,7 @@ import lombok.Data;
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -34,9 +35,9 @@ public class Configuration {
     private String charset;
     private String targetCharset;
     private String driver;
-    private int initialPoolSize = 5;
-    private int minPoolSize = 5;
-    private int maxPoolSize = 50;
+    private int initialPoolSize = 50;
+    private int minPoolSize = 50;
+    private int maxPoolSize = 100;
     private int queryTimeout = 30;
     private boolean useSSH = false;
     private String sshHost;
@@ -47,6 +48,7 @@ public class Configuration {
     private String sshPassword;
     private String sshKey;
     private String sshKeyPassword;
+    private String url;
 
 
     public String getLHost(){
@@ -68,7 +70,7 @@ public class Configuration {
     protected static final Pattern HOST_PORT_PATTERN = Pattern.compile("//([^:/]+)(?::(\\d+))?");
     protected static final Pattern PARAMETERS_PATTERN = Pattern.compile("([^&=]+)=([^&]*)");
     private static final Pattern DB_NAME_PATTERN = Pattern.compile("//[^/]+/([^?]+)");
-    private Map<String, String> parameters;
+    private Map<String, String> parameters = new HashMap<>();
     protected void parseHostAndPort(String jdbcUrl) {
         Matcher matcher = HOST_PORT_PATTERN.matcher(jdbcUrl);
         if (matcher.find()) {

@@ -20,7 +20,10 @@ import {
   TooltipShowOptions,
   ColCell,
   Node,
-  LayoutResult
+  LayoutResult,
+  TableDataCell,
+  TableColCell,
+  TextTheme
 } from '@antv/s2'
 import { ElMessageBox } from 'element-plus-secondary'
 import { cloneDeep, debounce, isEqual, isNumber } from 'lodash-es'
@@ -104,6 +107,43 @@ const containerId = computed(() => {
   return 'table-container-' + props.chart.id
 })
 let s2: TableSheet
+class CustomDataCell extends TableDataCell {
+  protected getTextStyle(): TextTheme {
+    const textStyle = super.getTextStyle()
+    const dataCellAlignConfig = this.theme.dataCellAlignConfig
+    if (dataCellAlignConfig) {
+      const align = dataCellAlignConfig[this.meta.valueField]
+      if (align) {
+        textStyle.textAlign = align
+      }
+    }
+    if (textStyle.textAlign === 'custom') {
+      textStyle.textAlign = 'left'
+    }
+    return textStyle
+  }
+}
+class CustomColCell extends TableColCell {
+  protected getTextStyle(): TextTheme {
+    const textStyle = super.getTextStyle()
+    const colCellAlignConfig = this.theme.colCellAlignConfig
+    if (colCellAlignConfig) {
+      // 分组单元格居中
+      if (this.meta.children?.length) {
+        textStyle.textAlign = 'center'
+        return textStyle
+      }
+      const align = colCellAlignConfig[this.meta.field]
+      if (align) {
+        textStyle.textAlign = align
+      }
+    }
+    if (textStyle.textAlign === 'custom') {
+      textStyle.textAlign = 'left'
+    }
+    return textStyle
+  }
+}
 const renderTable = (chart: ChartObj) => {
   const data = dvMainStore.getViewDataDetails(chart.id)
   const containerDom = document.getElementById(containerId.value)
@@ -168,6 +208,29 @@ const renderTable = (chart: ChartObj) => {
     width: containerDom.getBoundingClientRect().width,
     height: containerDom.offsetHeight,
     tooltip: {
+      autoAdjustBoundary: null,
+      adjustPosition(positionInfo) {
+        const {
+          position: { x, y }
+        } = positionInfo
+        const scrollWidth = containerDom.scrollLeft
+        const groupMenuContainer = document.getElementById(menuGroupId.value)
+        const menuWidth = groupMenuContainer?.offsetWidth || 120
+        const containerWidth = containerDom.offsetWidth
+        let finalX = x
+        let finalY = y + 10
+        if (x - scrollWidth + menuWidth > containerWidth) {
+          finalX = x - menuWidth
+        }
+        const menuHeight = groupMenuContainer?.offsetHeight || 80
+        if (finalY + menuHeight > containerDom.offsetHeight - 8) {
+          finalY = containerDom.offsetHeight - menuHeight - 8
+          if (finalY < 0) {
+            finalY = 0
+          }
+        }
+        return { x: finalX, y: finalY }
+      },
       getContainer: () => containerDom,
       renderTooltip: sheet => new GroupMenu(sheet),
       style: {
@@ -182,10 +245,31 @@ const renderTable = (chart: ChartObj) => {
         colCellVertical: false,
         rowCellVertical: false
       }
+    },
+    dataCell: meta => {
+      return new CustomDataCell(meta, meta.spreadsheet)
+    },
+    colCell: (meta, sheet, config) => {
+      return new CustomColCell(meta, sheet, config)
     }
   }
   s2 = new TableSheet(containerDom, s2DataConfig, s2Options)
+  const { tableHeader, tableCell } = chart.customAttr
   const theme = getCustomTheme(chart)
+  if (tableHeader.tableHeaderAlign === 'custom') {
+    theme.colCellAlignConfig =
+      tableHeader.alignConfig?.reduce((pre, cur) => {
+        pre[cur.id] = cur.align
+        return pre
+      }, {}) || {}
+  }
+  if (tableCell.tableItemAlign === 'custom') {
+    theme.dataCellAlignConfig =
+      tableCell.alignConfig?.reduce((pre, cur) => {
+        pre[cur.id] = cur.align
+        return pre
+      }, {}) || {}
+  }
   s2.setTheme(theme)
   const groupMenuContainer = document.getElementById(menuGroupId.value)
   s2.on(S2Event.COL_CELL_CONTEXT_MENU, e => {
@@ -444,6 +528,10 @@ const renderTable = (chart: ChartObj) => {
               s2.render(true)
             }
             s2.interaction.clearState()
+            s2.emit(S2Event.LAYOUT_AFTER_HEADER_LAYOUT, {
+              ...s2.facet.layoutResult,
+              reLayout: true
+            })
           })
           .catch(() => {
             // do nothing
@@ -497,7 +585,8 @@ const renderTable = (chart: ChartObj) => {
   })
   s2.once(S2Event.LAYOUT_AFTER_HEADER_LAYOUT, (e: LayoutResult) => {
     const initialized = s2.store.get('initialized')
-    if (!initialized) {
+    const reLayout = e.reLayout
+    if (!initialized || reLayout) {
       s2.store.set('initialized', true)
       s2.changeSheetSize(e.colsHierarchy.width)
       const length = s2.dataCfg.data?.length || 0
@@ -505,7 +594,12 @@ const renderTable = (chart: ChartObj) => {
       const rowHeight = s2.options.style.cellCfg.height
       const totalHeight = headerHeight + rowHeight * length
       if (containerDom.offsetHeight > totalHeight) {
-        containerDom.style.height = totalHeight + 'px'
+        // 要加上滚动条高度
+        containerDom.style.height = totalHeight + 8 + 'px'
+      }
+      if (containerDom.offsetHeight < totalHeight) {
+        containerDom.style.height = totalHeight + 8 + 'px'
+        s2.changeSheetSize(undefined, totalHeight + 8)
       }
       s2.render(false)
     }
@@ -609,8 +703,29 @@ class GroupMenu extends BaseTooltip {
   height: 40vh;
   overflow-x: auto;
   overflow-y: hidden;
+  &::-webkit-scrollbar {
+    height: 8px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: #ddd;
+    border-radius: 4px;
+    &:hover {
+      background: #ccc;
+    }
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
   &.dark {
-    scrollbar-color: #3a3a3a #1a1a1a;
+    &::-webkit-scrollbar-thumb {
+      background: #3a3a3a;
+      &:hover {
+        background: #4a4a4a;
+      }
+    }
+    &::-webkit-scrollbar-track {
+      background: #1a1a1a;
+    }
   }
 }
 
@@ -624,6 +739,7 @@ class GroupMenu extends BaseTooltip {
   :deep(span) {
     cursor: pointer;
     padding: 5px 10px;
+    word-break: keep-all;
     &:hover {
       background-color: var(--ed-fill-color-light);
     }

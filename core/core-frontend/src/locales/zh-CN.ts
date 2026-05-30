@@ -1,6 +1,9 @@
 export default {
   common: {
-    month_to_yesterday: '月初至昨天',
+    display_formats: '展示形式',
+    dropdown_display: '下拉展示',
+    tile_display: '平铺展示',
+    month_to_yesterday: '月初至昨天（当月）',
     to_this_month: '年初至本月',
     up_to_options: '最多展示1000个选项',
     next_week: '下周',
@@ -91,7 +94,8 @@ export default {
     filter: '筛选',
     filter_condition: '筛选条件',
     no_auth_tips: '缺少菜单权限，请联系管理员',
-    no_menu_tips: '未找到资源 401错误'
+    no_menu_tips: '未找到资源 401错误',
+    refresh_success: '刷新成功'
   },
   toolbox: {
     name: '工具箱',
@@ -303,6 +307,8 @@ export default {
     time_function: '时间函数',
     customize: '自定义',
     that_day: '当天',
+    previous_day: '前一天',
+    timestamp: '当前时间（时间戳）',
     value: '值',
     name_use_parameters: "可用${'{'}参数名{'}'}，使用参数",
     add_parameters: '添加参数',
@@ -686,8 +692,11 @@ export default {
     please_select_area: '请选择区域',
     delete_custom_sub_area_tip: '确定删除该自定义区域？',
     saml: {
-      title: 'SAML2 设置'
-    }
+      title: 'SAML2 设置',
+      request: '开启请求签名',
+      assertion: '开启断言签名'
+    },
+    country: '国家'
   },
   components: {
     dashboard_style: '仪表板风格',
@@ -706,9 +715,9 @@ export default {
     dashboard_configuration: '仪表板配置',
     to_mobile_layout: '切换至移动端布局',
     complete: '完成',
-    pager_color: '分页器配色',
+    pager_color: '分页器',
     title_horizontal_position: '标题水平位置',
-    title_display_position: '标题显示位置',
+    title_display_position: '标签显示位置',
     title_color: '标题颜色',
     label_color: '标签颜色',
     input_box_style: '输入框样式',
@@ -724,6 +733,9 @@ export default {
     to_delete_variable: '确定删除 {0} 吗?'
   },
   user: {
+    my: '我的',
+    switch_organization: '切换组织',
+    logout: '注销',
     change_password: '修改密码',
     select_users: '请选择用户',
     account: '账号',
@@ -884,6 +896,7 @@ export default {
       user_source: '用户来源',
       user_label: '用户标签',
       user_email: '邮箱',
+      user_phone: '手机号',
       dept: '组织',
       role: '角色'
     },
@@ -944,6 +957,7 @@ export default {
     config: '数据源配置',
     table: '数据源表',
     table_name: '表名',
+    table_remarks: '表备注',
     remark: '备注',
     column_name: '字段名',
     field_type: '字段类型',
@@ -1042,6 +1056,13 @@ export default {
     all_compute_mode: '直连、抽取模式',
     extra_params: '额外的 JDBC 连接字符串',
     jdbcUrl: 'JDBC 连接',
+    ck_ssl_ca: 'SSL CA 证书',
+    ck_ssl_client_cert: 'SSL 客户端证书',
+    ck_ssl_client_key: 'SSL 客户端私钥',
+    ck_ssl_upload: '上传证书',
+    ck_ssl_upload_hint: '支持 .pem/.crt/.cer/.key，上传后可自动填充内容',
+    ck_ssl_pem_placeholder: '请输入或上传 PEM 内容',
+    ck_ssl_read_failed: 'SSL 证书读取失败',
     please_input_dataPath: '请输入 JsonPath 数据路径',
     show_api_data: '查看API数据结构',
     warning: '包含无效数据表',
@@ -1126,6 +1147,9 @@ export default {
     simple_cron: '简单重复',
     manual: '手动更新',
     cron_config: '表达式设定',
+    preview_next_exec_times: '执行时间预览',
+    next_five_exec_times: '接下来五次执行时间',
+    no_next_exec_time: '暂无可执行时间',
     no_limit: '无限制',
     set_end_time: '设定结束时间',
     exec_time: '执行时间',
@@ -1157,6 +1181,10 @@ export default {
     load_data: '加载数据'
   },
   chart: {
+    self: '自己',
+    total_row: '整行',
+    custom: '自定义',
+    apply_to: '作用范围',
     align: '对齐方式',
     reset: '重置',
     chart_refresh_tips: '图表刷新设置优先于仪表板刷新设置',
@@ -1399,6 +1427,7 @@ export default {
     table_col_freeze_tip: '冻结前 n 列',
     table_row_freeze_tip: '冻结前 n 行',
     table_freeze: '冻结',
+    table_empty_font_color: '无数据提示',
     stripe: '斑马纹',
     start_angle: '起始角度',
     end_angle: '结束角度',
@@ -1501,6 +1530,8 @@ export default {
     condition: '过滤值',
     filter_value_can_null: '过滤值不能为空',
     filter_like: '包含',
+    filter_start_with: '开始以',
+    filter_end_with: '结束以',
     filter_not_like: '不包含',
     filter_in: '属于',
     filter_not_in: '不属于',
@@ -1547,6 +1578,7 @@ export default {
     chart_scatter_bubble: '气泡图',
     chart_scatter: '散点图',
     bubble_size: '气泡大小',
+    lightness: '明暗',
     chart_treemap: '矩形树图',
     drill: '钻取',
     drag_block_treemap_label: '色块标签',
@@ -1672,6 +1704,11 @@ export default {
     table_column_adapt: '自适应',
     table_column_fixed: '固定列宽',
     table_column_custom: '自定义',
+    table_column_col_adapt: '列自适应',
+    table_row_header_width: '行头宽度',
+    table_row_header_adapt: '自适应',
+    table_row_header_fixed: '固定宽度',
+    table_row_header_percent: '百分比',
     chart_table_pivot: '透视表',
     chart_table_heatmap: '热力图',
     table_pivot_row: '数据行',
@@ -1785,6 +1822,9 @@ export default {
     dimension_text_style: '名称样式',
     dimension_letter_space: '名称字间距',
     name_value_spacing: '名称/值间距',
+    name_position: '位置',
+    name_position_top: '上方',
+    name_position_bottom: '下方',
     font_family: '字体',
     letter_space: '字间距',
     font_shadow: '字体阴影',
@@ -2067,7 +2107,12 @@ export default {
     table_field_total_label: '字段别名',
     table_row_header_freeze: '行头冻结',
     value_formatter_total_out_percent: '显示占比',
-    enable_slider_tip: '开启缩略轴后，轮播提示将会失效'
+    enable_slider_tip: '开启缩略轴后，轮播提示将会失效',
+    liquid_show_border: '显示边框',
+    liquid_border_width: '边框宽度',
+    liquid_border_distance: '边框间距',
+    top_n_label_tip: '请勿和扇区标签字段数据值重复，否则会导致显示异常',
+    used_global_map_mapping: '使用全局地名映射'
   },
   dataset: {
     field_value: '字段值',
@@ -2434,7 +2479,9 @@ export default {
     serial_no: '序列号',
     remark: '备注',
     back_community: '还原至社区版',
-    confirm_tips: '确定还原至社区版？'
+    confirm_tips: '确定还原至社区版？',
+    set_of: '套',
+    count_of: '个账号'
   },
   cron: {
     second: '秒',
@@ -2773,6 +2820,7 @@ export default {
     last_3_days: '最近 3 天',
     month_to_date: '月初至今',
     year_to_date: '年初至今',
+    year_to_last_month_end: '年初至上月末',
     exact_match: '精确匹配',
     fuzzy_match: '模糊匹配',
     option_type: '选项类型',
@@ -2787,7 +2835,7 @@ export default {
     condition_cascade_configuration: '查询条件级联配置',
     not_reverse_cascade: '(仅上级能级联下级,不可反向级联)',
     must_be_met: '基于当前查询组件的查询条件，如果需要进行级联配置，需要满足以下条件：',
-    select_data_set: '1. 展示类型：文本下拉组件和数字下拉组件；2. 选项值来源：选择数据集',
+    select_data_set: '1. 展示类型：文本下拉组件，数字下拉组件，下拉树；2. 选项值来源：选择数据集',
     add_cascade_configuration: '添加级联配置',
     add_cascade_condition: '添加级联条件',
     query_condition_level: '查询条件层级',
@@ -2858,6 +2906,19 @@ export default {
     column_name: '字段名称'
   },
   visualization: {
+    hover_button_tips: '显示图表操作按钮',
+    preview_effect: '预览时生效',
+    img_can_not_null: '图片不能为空',
+    outer_params_type_tips1:
+      "类型为过滤时仅对文本下拉、文本树、数字下拉，文本树的过滤格式多级之间使用'-de-' 隔离",
+    outer_params_type_tips2:
+      '["Level1","Level1-de-Level2_1","Level2-de-Level2_1","Level1-de-Level2_1-de-Level3_1","Level2"]',
+    outer_params_type: '类型',
+    outer_params_type_self: '赋值',
+    outer_params_type_filter: '过滤',
+    number_formatter: '数字内容格式',
+    jump_dialog_background: '弹框背景色',
+    jump_dialog_button: '弹框字体色',
     sqlbot_query_tips: '智能问数',
     cur_sq_dataset: '当前选择的数据集：',
     data_match_type: '数据匹配方式',
@@ -3238,6 +3299,9 @@ export default {
     panel_background: '仪表板背景',
     component_color: '组件配色',
     chart_title: '图表标题',
+    chart_label: '图表标签',
+    chart_tooltip: '图表提示',
+    chart_tooltip_bg_color: '背景颜色',
     filter_component: '查询组件',
     enable_refresh_view: '开启刷新',
     enable_view_loading: '图表加载提示',
@@ -3710,6 +3774,7 @@ export default {
     frontTimeOut: '请求超时时间 (秒)',
     logLiveTime: '操作日志保留时间 (天)',
     thresholdLogLiveTime: '阈值告警记录保留时间 (天)',
+    dataFillingLogLiveTime: '数据填报操作日志保留时间 (天)',
     exportFileLiveTime: '后台导出文件保留时间 (天)',
     platformOid: '第三方平台用户组织',
     platformRid: '第三方平台用户角色',
@@ -3721,10 +3786,14 @@ export default {
     sharePeRequire: '分享有效期密码必填',
     defaultSort: '资源默认排序方式',
     defaultOpen: '页面打开方式',
+    embeddedExportMode: '嵌入式数据导出方式',
+    exportModeSync: '同步',
+    exportModeAsync: '异步',
     loginLimit: '限制登录',
     loginLimitRate: '限制登录失败次数 (次)',
     loginLimitTime: '限制登录失败时间 (分)',
-    share_disable_tips: '开启后仪表板以及大屏分享无效'
+    share_disable_tips: '开启后仪表板以及大屏分享无效',
+    thresholdLimit: '告警数据限制'
   },
   resource_sort: {
     time_asc: '按创建时间升序',
@@ -3871,7 +3940,7 @@ export default {
     description: '描述',
     tips: '提示',
     replication: 'BE 副本数',
-    replication_tip: 'BE 节点数量'
+    replication_tip: '未填写时默认使用 1'
   },
   sync_summary: {
     summary: '概览',
@@ -4112,6 +4181,11 @@ export default {
     instance_title: '任务日志',
     add_task: '添加任务',
     lark_groups: '飞书群',
+    dingtalk_groups: '钉钉群',
+    dingtalk_groups_tips: '先创建应用机器人并添加到群里',
+    robot_code_place: '默认与 APP Key一致',
+    click_add_chat: '请点击下方按钮添加群聊',
+    add_chat_tips: '仅支持 admin 关联账号在客户端使用',
     larksuite_groups: '国际飞书群',
     send_setting: '发送设置',
     retrying_settings: '发送失败重试设置',
@@ -4155,7 +4229,11 @@ export default {
       retrying_rate: '重试间隔（分钟）',
       please_input_positive_int: '请输入 {0} 正整数',
       rate: '发送频率',
-      ext_wait_time: '额外等待时间（秒）'
+      ext_wait_time: '额外等待时间（秒）',
+      data_permission: '数据权限',
+      creator_permission: '创建人权限',
+      reci_permission: '接收人权限',
+      data_permission_tips: '接收人若为系统内用户，则遵循设置的数据权限规则；否则使用创建人的权限'
     },
     filter: {
       title: '设置查询组件默认值',
@@ -4235,7 +4313,7 @@ export default {
       detail_columns: '字段描述',
       display_name: '显示名称',
       show_more_detail: '查看更多',
-      confirm_to_mark_as_complete: '确认标记为完成?',
+      confirm_to_mark_as_complete: '确认标记为已提交?',
       mobile_number_format_is_incorrect: '手机号码格式不正确',
       email_format_is_incorrect: '邮箱格式不正确',
       name: '名称',
@@ -4334,7 +4412,7 @@ export default {
       ge_check: '值需要大于等于{0}: {1}',
       status: '填报状态',
       status_0: '未填报',
-      status_1: '已完成'
+      status_1: '已提交'
     },
     database: {
       nvarchar: '字符串',
@@ -4391,6 +4469,7 @@ export default {
       please_select_end_time: '请选择任务结束时间',
       end_time_error: '结束时间必须大于当前时间',
       distribute_setting: '下发设置',
+      notification_setting: '通知设置',
       task_distribute_setting: '任务下发设置',
       receive_object: '接收对象',
       receive_fit_column: '接收对象匹配字段',
@@ -4417,6 +4496,9 @@ export default {
       task_status: '任务状态',
       task_progress: '已填报数/总数',
       task_name: '任务名称',
+      msg_title: '您有一个新的数据填报任务',
+      msg_content_1: '您有一个新的数据填报任务: ',
+      msg_content_2: '，请及时完成填报工作',
       add_task: '添加任务',
       task_remain_time: '任务有效期',
       task_sender: '任务下发人',
@@ -4479,6 +4561,7 @@ export default {
     notification_user: '通知人',
     notification_email: '邮件通知',
     please_enter_email: '请输入邮箱，回车确认',
+    please_choose_dingtalk_group: '请选择钉钉群',
     please_choose_lark_group: '请选择飞书群',
     notification_content: '通知内容',
     default_msg: '默认消息',
@@ -4486,6 +4569,7 @@ export default {
     msg_title: '消息标题',
     msg_content: '消息正文',
     repeat_send: '是否重复发送',
+    show_field_value: '显示字段值',
     recipient: '接收人',
     choose_recipient: '选择接收人',
     trigger_alarm: '触发告警',
@@ -4495,6 +4579,7 @@ export default {
     recipient_setting: '设置接收人',
     attention_quota_tip: '您关注的指标',
     pay_attention_in_time: '。请及时关注。',
+    threshold_record: '告警数据',
     msg_preview: '消息预览',
     average: '平均值',
     next_time: '下一',
@@ -4565,6 +4650,7 @@ export default {
     bind: '绑定',
     unbind_success: '解绑成功',
     confirm_unbind_dingtalk: '确定解除{0}绑定吗？',
+    unbind_error: '当前用户来源是{0}，无法解绑',
     pls_use: '请使用',
     bind_use_qr: '扫描二维码绑定',
     pls_use_dingtalk: '请使用钉钉扫描二维码登录',
@@ -4615,6 +4701,13 @@ export default {
   security: {
     title: '安全设置'
   },
+  setting_hmac: {
+    title: 'HMAC 设置',
+    enable: '启用 HMAC 认证',
+    clock_skew: '时钟偏差',
+    clock_skew_tips: '单位：秒，默认为300，即允许请求时间与服务器时间相差5分钟',
+    clock_skew_range: '时钟偏差范围为 1-{0} 秒'
+  },
   setting_mfa: {
     title: 'MFA 设置',
     status: '全局启用 MFA 认证',
@@ -4661,5 +4754,22 @@ export default {
     content_type: '内容类型',
     del_confirm: '确定删除该 Webhook吗？',
     batch_del_confirm: '确定删除 {0} 个 Webhook吗'
+  },
+  element_plus: {
+    el: {
+      pagination: {
+        goto: '前往',
+        pagesize: '条/页',
+        total: '共 {total} 条',
+        pageClassifier: '页',
+        page: '页',
+        prev: '上一页',
+        next: '下一页',
+        currentPage: '第 {pager} 页',
+        prevPages: '向前 {pager} 页',
+        nextPages: '向后 {pager} 页',
+        deprecationWarning: '检测到已弃用的用法，请参阅 el-pagination 文档以了解更多详情'
+      }
+    }
   }
 }

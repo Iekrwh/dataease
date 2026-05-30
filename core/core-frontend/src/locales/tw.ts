@@ -1,6 +1,9 @@
 export default {
   common: {
-    month_to_yesterday: '月初至昨天',
+    display_formats: '展示形式',
+    dropdown_display: '下拉展示',
+    tile_display: '平铺展示',
+    month_to_yesterday: '月初至昨天（當月）',
     to_this_month: '年初至本月',
     up_to_options: '最多展示1000個選項',
     next_week: '下週',
@@ -90,7 +93,8 @@ export default {
     filter: '篩選',
     filter_condition: '篩選條件',
     no_auth_tips: '缺少選單權限，請聯絡管理員',
-    no_menu_tips: '未找到資源401錯誤'
+    no_menu_tips: '未找到資源401錯誤',
+    refresh_success: '刷新成功'
   },
   toolbox: {
     name: '工具箱',
@@ -302,6 +306,8 @@ export default {
     time_function: '時間函數',
     customize: '自訂',
     that_day: '當天',
+    previous_day: '前一天',
+    timestamp: '當前時間（時間戳）',
     value: '值',
     name_use_parameters: "可用${'{'}參數名稱{'}'}，使用參數",
     add_parameters: '新增參數',
@@ -680,7 +686,13 @@ export default {
     sub_area_tip: '請選擇省份或直轄市',
     delete_custom_area_tip: '該操作會導致使用了自定義區域的地圖無法正常展示，確定刪除？',
     please_select_area: '請選擇區域',
-    delete_custom_sub_area_tip: '確定刪除該自定義區域？'
+    delete_custom_sub_area_tip: '確定刪除該自定義區域？',
+    saml: {
+      title: 'SAML2 設定',
+      request: '開啟請求簽名',
+      assertion: '開啟斷言簽名'
+    },
+    country: '國家'
   },
   components: {
     effective_during_link: '公共連結生效',
@@ -700,9 +712,9 @@ export default {
     dashboard_configuration: '儀表板配置',
     to_mobile_layout: '切換至行動裝置佈局',
     complete: '完成',
-    pager_color: '分頁器配色',
+    pager_color: '分頁器',
     title_horizontal_position: '標題水平位置',
-    title_display_position: '標題顯示位置',
+    title_display_position: '標籤顯示位置',
     title_color: '標題顏色',
     label_color: '標籤顏色',
     input_box_style: '輸入框樣式',
@@ -718,6 +730,9 @@ export default {
     to_delete_variable: '確定刪除 {0} 嗎?'
   },
   user: {
+    my: '我的',
+    switch_organization: '切換組織',
+    logout: '登出',
     change_password: '修改密碼',
     select_users: '請選擇使用者',
     account: '帳號',
@@ -879,6 +894,7 @@ export default {
       user_source: '使用者來源',
       user_label: '使用者標籤',
       user_email: '信箱',
+      user_phone: '手機號',
       dept: '組織',
       role: '角色'
     },
@@ -939,6 +955,7 @@ export default {
     config: '資料來源配置',
     table: '資料來源表',
     table_name: '表名',
+    table_remarks: '表備註',
     remark: '備註',
     column_name: '欄位名稱',
     field_type: '字段類型',
@@ -1034,6 +1051,13 @@ export default {
     all_compute_mode: '直連、抽取模式',
     extra_params: '額外的JDBC 連接字串',
     jdbcUrl: 'JDBC 連接',
+    ck_ssl_ca: 'SSL CA 憑證',
+    ck_ssl_client_cert: 'SSL 用戶端憑證',
+    ck_ssl_client_key: 'SSL 用戶端私鑰',
+    ck_ssl_upload: '上傳憑證',
+    ck_ssl_upload_hint: '支援 .pem/.crt/.cer/.key，上傳後可自動填入內容',
+    ck_ssl_pem_placeholder: '請輸入或上傳 PEM 內容',
+    ck_ssl_read_failed: 'SSL 憑證讀取失敗',
     please_input_dataPath: '請輸入JsonPath 資料路徑',
     show_api_data: '查看API資料結構',
     warning: '包含無效資料表',
@@ -1118,6 +1142,9 @@ export default {
     simple_cron: '簡單重複',
     manual: '手動更新',
     cron_config: '表達式設定',
+    preview_next_exec_times: '執行時間預覽',
+    next_five_exec_times: '接下來五次執行時間',
+    no_next_exec_time: '暫無可執行時間',
     no_limit: '無限制',
     set_end_time: '設定結束時間',
     exec_time: '執行時間',
@@ -1149,6 +1176,10 @@ export default {
     load_data: '載入資料'
   },
   chart: {
+    self: '自己',
+    total_row: '整行',
+    custom: '自定義',
+    apply_to: '作用範圍',
     align: '對齊方式',
     reset: '重置',
     chart_refresh_tips: '圖表刷新設定優先於儀表板刷新設定',
@@ -1357,6 +1388,8 @@ export default {
     filter_empty: '空字串',
     filter_not_empty: '非空字串',
     filter_include: '包含',
+    filter_start_with: '開始以',
+    filter_end_with: '結束以',
     filter_not_include: '不包含',
     rose_type: '玫瑰圖模式',
     radius_mode: '半徑',
@@ -1391,6 +1424,7 @@ export default {
     table_col_freeze_tip: '凍結前n 列',
     table_row_freeze_tip: '凍結前n 行',
     table_freeze: '凍結',
+    table_empty_font_color: '無數據提示',
     stripe: '斑馬紋',
     start_angle: '起始角度',
     end_angle: '結束角度',
@@ -1539,6 +1573,7 @@ export default {
     chart_scatter_bubble: '氣泡圖',
     chart_scatter: '散佈圖',
     bubble_size: '氣泡大小',
+    lightness: '明暗',
     chart_treemap: '矩形樹圖',
     drill: '鑽取',
     drag_block_treemap_label: '色塊標籤',
@@ -1664,6 +1699,11 @@ export default {
     table_column_adapt: '自適應',
     table_column_fixed: '固定列寬',
     table_column_custom: '自訂',
+    table_column_col_adapt: '列自適應',
+    table_row_header_width: '行頭寬度',
+    table_row_header_adapt: '自適應',
+    table_row_header_fixed: '固定寬度',
+    table_row_header_percent: '百分比',
     chart_table_pivot: '透視表',
     chart_table_heatmap: '熱力圖',
     table_pivot_row: '資料行',
@@ -1777,6 +1817,9 @@ export default {
     dimension_text_style: '名稱樣式',
     dimension_letter_space: '名稱字間距',
     name_value_spacing: '名稱/值間距',
+    name_position: '位置',
+    name_position_top: '上方',
+    name_position_bottom: '下方',
     font_family: '字體',
     letter_space: '字間距',
     font_shadow: '字體陰影',
@@ -2058,7 +2101,12 @@ export default {
     table_field_total_label: '字段別名',
     table_row_header_freeze: '行頭凍結',
     value_formatter_total_out_percent: '顯示佔比',
-    enable_slider_tip: '開啟縮略軸後，輪播提示將會失效'
+    enable_slider_tip: '開啟縮略軸後，輪播提示將會失效',
+    liquid_show_border: '顯示邊框',
+    liquid_border_width: '邊框寬度',
+    liquid_border_distance: '邊框間距',
+    top_n_label_tip: '請勿與扇區標籤欄位的數據值重複，否則會導致顯示異常。',
+    used_global_map_mapping: '使用全域地名對應'
   },
   dataset: {
     field_value: '欄位值',
@@ -2425,7 +2473,9 @@ export default {
     serial_no: '序號',
     remark: '備註',
     back_community: '還原至社區版',
-    confirm_tips: '确定還原至社區版？'
+    confirm_tips: '确定還原至社區版？',
+    set_of: '套',
+    count_of: '個賬號'
   },
   cron: {
     second: '秒',
@@ -2764,6 +2814,7 @@ export default {
     last_3_days: '最近3 天',
     month_to_date: '月初至今',
     year_to_date: '年初至今',
+    year_to_last_month_end: '年初至上月底',
     exact_match: '精確匹配',
     fuzzy_match: '模糊匹配',
     option_type: '選項類型',
@@ -2778,7 +2829,7 @@ export default {
     condition_cascade_configuration: '查詢條件級聯配置',
     not_reverse_cascade: '(僅上級能級聯下級,不可反向級聯)',
     must_be_met: '基於目前查詢元件的查詢條件，如果需要進行級聯配置，需要滿足以下條件：',
-    select_data_set: '1. 展示類型：文字下拉元件與數字下拉元件；2. 選項值來源：選擇資料集',
+    select_data_set: '1. 展示類型：文字下拉元件與數字下拉元件，下拉樹；2. 選項值來源：選擇資料集',
     add_cascade_configuration: '新增級聯配置',
     add_cascade_condition: '新增級聯條件',
     query_condition_level: '查詢條件層級',
@@ -2849,6 +2900,19 @@ export default {
     column_name: '欄位名稱'
   },
   visualization: {
+    hover_button_tips: '顯示圖表操作按鈕',
+    preview_effect: '預覽時生效',
+    img_can_not_null: '圖片不能為空',
+    outer_params_type_tips1:
+      "類型為過濾時僅對文字下拉、文字樹、數字下拉有效。文字樹的過濾格式中，多級之間使用 '-de-' 分隔",
+    outer_params_type_tips2:
+      '["Level1","Level1-de-Level2_1","Level2-de-Level2_1","Level1-de-Level2_1-de-Level3_1","Level2"]',
+    outer_params_type: '類型',
+    outer_params_type_self: '賦值',
+    outer_params_type_filter: '過濾',
+    number_formatter: '數字內容格式',
+    jump_dialog_background: '彈框背景色',
+    jump_dialog_button: '彈框字體色',
     sqlbot_query_tips: '智能問數',
     cur_sq_dataset: '當前選擇的數據集：',
     data_match_type: '資料匹配方式',
@@ -3230,6 +3294,9 @@ export default {
     panel_background: '儀表板背景',
     component_color: '組件配色',
     chart_title: '圖表標題',
+    chart_label: '圖表標籤',
+    chart_tooltip: '圖表提示',
+    chart_tooltip_bg_color: '背景顏色',
     filter_component: '查詢組件',
     enable_refresh_view: '開啟刷新',
     enable_view_loading: '圖表加載提示',
@@ -3701,6 +3768,7 @@ export default {
     frontTimeOut: '請求超時時間 (秒)',
     logLiveTime: '操作日誌保留時間 (天)',
     thresholdLogLiveTime: '閾值警告記錄保留時間 (天)',
+    dataFillingLogLiveTime: '數據填報操作日誌保留時間 (天)',
     exportFileLiveTime: '後台匯出檔案保留時間 (天)',
     platformOid: '第三方平台使用者組織',
     platformRid: '第三方平台使用者角色',
@@ -3712,10 +3780,14 @@ export default {
     sharePeRequire: '分享有效期限密碼必填',
     defaultSort: '資源預設排序方式',
     defaultOpen: '頁面開啟方式',
+    embeddedExportMode: '嵌入式資料匯出方式',
+    exportModeSync: '同步',
+    exportModeAsync: '異步',
     loginLimit: '限制登入',
     loginLimitRate: '限制登入失敗次數 (次)',
     loginLimitTime: '限制登入失敗時間 (分)',
-    share_disable_tips: '開啟後儀表板以及大屏分享無效'
+    share_disable_tips: '開啟後儀表板以及大屏分享無效',
+    thresholdLimit: '告警數據限製'
   },
   resource_sort: {
     time_asc: '按建立時間升序',
@@ -3865,7 +3937,7 @@ export default {
     description: '描述',
     tips: '提示',
     replication: 'BE 複本數',
-    replication_tip: 'BE 節點數量'
+    replication_tip: '未填寫時預設使用 1'
   },
   sync_summary: {
     summary: '概覽',
@@ -4105,6 +4177,11 @@ export default {
     instance_title: '任務日誌',
     add_task: '新增任務',
     lark_groups: '飛書群',
+    dingtalk_groups: '釘釘群',
+    dingtalk_groups_tips: '先建立應用機器人並添加到群裡',
+    robot_code_place: '默認與 APP Key一致',
+    click_add_chat: '請點擊下方按鈕添加群聊',
+    add_chat_tips: '僅支持 admin 關聯帳號在客戶端使用',
     larksuite_groups: '國際飛書群',
     send_setting: '發送設定',
     retrying_settings: '發送失敗重試設定',
@@ -4229,7 +4306,7 @@ export default {
       detail_columns: '字段描述',
       display_name: '顯示名稱',
       show_more_detail: '查看更多',
-      confirm_to_mark_as_complete: '確認標記為完成?',
+      confirm_to_mark_as_complete: '確認標記為已提交?',
       mobile_number_format_is_incorrect: '手機號碼格式不正確',
       email_format_is_incorrect: '郵件格式不正確',
       name: '名稱',
@@ -4328,7 +4405,7 @@ export default {
       ge_check: '值需要大於等於{0}: {1}',
       status: '填報狀態',
       status_0: '未填報',
-      status_1: '已完成'
+      status_1: '已提交'
     },
     database: {
       nvarchar: '字串',
@@ -4419,6 +4496,9 @@ export default {
       task_end_time: '任務截止時間',
       edit_data: '編輯資料',
       show_data: '查看資料',
+      msg_title: '您有一個新的資料填報任務',
+      msg_content_1: '您有一個新的資料填報任務: ',
+      msg_content_2: '，請及時完成填報工作',
       confirm_enable: '確認啟動任務？ （單次任務會新建下發任務）',
       confirm_disable: '確認停止任務？ ',
       edit_task: '編輯任務',
@@ -4471,6 +4551,7 @@ export default {
     notification_user: '通知人',
     notification_email: '郵件通知',
     please_enter_email: '請輸入郵箱，回車確認',
+    please_choose_dingtalk_group: '請選擇釘釘群',
     please_choose_lark_group: '請選擇飛書群',
     notification_content: '通知內容',
     default_msg: '默認消息',
@@ -4478,6 +4559,7 @@ export default {
     msg_title: '消息標題',
     msg_content: '消息正文',
     repeat_send: '是否重複發送',
+    show_field_value: '顯示字段值',
     recipient: '接收人',
     choose_recipient: '選擇接收人',
     trigger_alarm: '觸發告警',
@@ -4487,6 +4569,7 @@ export default {
     recipient_setting: '設置接收人',
     attention_quota_tip: '您關注的指標',
     pay_attention_in_time: '。請及時關注。',
+    threshold_record: '告警數據',
     msg_preview: '消息預覽',
     average: '平均值',
     next_time: '下一',
@@ -4556,7 +4639,8 @@ export default {
     international_lark_desc: '綁定後，您可透過國際飛書掃碼登入',
     bind: '綁定',
     unbind_success: '解綁成功',
-    confirm_unbind_dingtalk: '確定解除釘釘綁定嗎？ ',
+    confirm_unbind_dingtalk: '確定解除{0}綁定嗎？ ',
+    unbind_error: '當前用戶來源是{0}，無法解綁',
     pls_use: '請使用',
     bind_use_qr: '掃描二維碼綁定',
     pls_use_dingtalk: '請使用釘釘掃描二維碼登入',
@@ -4606,6 +4690,13 @@ export default {
   },
   security: {
     title: '安全設置'
+  },
+  setting_hmac: {
+    title: 'HMAC 設定',
+    enable: '啟用 HMAC 認證',
+    clock_skew: '時鐘偏差',
+    clock_skew_tips: '單位：秒，默認為300，即允許請求時間與伺服器時間相差5分鐘',
+    clock_skew_range: '時鐘偏差範圍為 1-{0} 秒'
   },
   setting_mfa: {
     title: 'MFA 設置',

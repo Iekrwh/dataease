@@ -1,14 +1,16 @@
 package io.dataease.datasource.provider;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.jcraft.jsch.Session;
+import com.jcraft.jsch.*;
 import io.dataease.constant.SQLConstants;
 import io.dataease.dataset.utils.FieldUtils;
 import io.dataease.datasource.dao.auto.entity.CoreDatasource;
 import io.dataease.datasource.dao.auto.entity.CoreDriver;
 import io.dataease.datasource.dao.auto.mapper.CoreDatasourceMapper;
+import io.dataease.datasource.dao.auto.mapper.CoreDriverMapper;
 import io.dataease.datasource.manage.EngineManage;
 import io.dataease.datasource.request.EngineRequest;
+import io.dataease.datasource.security.JdbcUrlSecurityPolicy;
 import io.dataease.datasource.type.*;
 import io.dataease.exception.DEException;
 import io.dataease.extensions.datasource.dto.*;
@@ -40,8 +42,12 @@ import java.io.File;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.StringReader;
+import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
 import java.net.URL;
+import java.nio.charset.Charset;
+import java.nio.charset.IllegalCharsetNameException;
+import java.nio.charset.UnsupportedCharsetException;
 import java.sql.*;
 import java.util.*;
 import java.util.regex.Matcher;
@@ -54,6 +60,8 @@ public class CalciteProvider extends Provider {
 
     @Resource
     protected CoreDatasourceMapper coreDatasourceMapper;
+    @Resource
+    protected CoreDriverMapper coreDriverMapper;
     @Resource
     private EngineManage engineManage;
     protected ExtendedJdbcClassLoader extendedJdbcClassLoader;
@@ -100,6 +108,7 @@ public class CalciteProvider extends Provider {
                 schemas.add(resultSet.getString(1));
             }
         } catch (Exception e) {
+            LogUtil.error(e.getMessage(), e);
             DEException.throwException(e.getMessage());
         }
         if (datasourceRequest.getDatasource().getType().equalsIgnoreCase(DatasourceConfiguration.DatasourceType.pg.name())) {
@@ -126,14 +135,12 @@ public class CalciteProvider extends Provider {
 
         try (ConnectionObj con = getConnection(datasourceRequest.getDatasource())) {
             datasourceRequest.setDsVersion(con.getConnection().getMetaData().getDatabaseMajorVersion());
-            String querySql = getTablesSql(datasourceRequest).get(0);
-            Statement statement = getStatement(con.getConnection(), 30);
-            ResultSet resultSet = statement.executeQuery(querySql);
-            if (resultSet != null) {
-                resultSet.close();
-            }
-            if (statement != null) {
-                statement.close();
+            QueryAndParams queryAndParams = getTablesSql(datasourceRequest).get(0);
+            try (PreparedStatement statement = prepareStatement(con.getConnection(), queryAndParams, 30);
+                 ResultSet resultSet = statement.executeQuery()) {
+                if (resultSet != null) {
+                    resultSet.close();
+                }
             }
         } catch (Exception e) {
             throw e;
@@ -144,16 +151,19 @@ public class CalciteProvider extends Provider {
     @Override
     public List<DatasetTableDTO> getTables(DatasourceRequest datasourceRequest) {
         List<DatasetTableDTO> tables = new ArrayList<>();
-        try (Connection con = getConnectionFromPool(datasourceRequest.getDatasource().getId()); Statement statement = getStatement(con, 30)) {
+        try (Connection con = getConnectionFromPool(datasourceRequest.getDatasource().getId())) {
             datasourceRequest.setDsVersion(con.getMetaData().getDatabaseMajorVersion());
-            List<String> tablesSqls = getTablesSql(datasourceRequest);
-            for (String tablesSql : tablesSqls) {
-                ResultSet resultSet = statement.executeQuery(tablesSql);
-                while (resultSet.next()) {
-                    tables.add(getTableDesc(datasourceRequest, resultSet));
+            List<QueryAndParams> tablesSqls = getTablesSql(datasourceRequest);
+            for (QueryAndParams tablesSql : tablesSqls) {
+                try (PreparedStatement statement = prepareStatement(con, tablesSql, 30);
+                     ResultSet resultSet = statement.executeQuery()) {
+                    while (resultSet.next()) {
+                        tables.add(getTableDesc(datasourceRequest, resultSet));
+                    }
                 }
             }
         } catch (Exception e) {
+            LogUtil.error(e.getMessage(), e);
             DEException.throwException(e.getMessage());
         }
         return tables;
@@ -287,6 +297,7 @@ public class CalciteProvider extends Provider {
             try {
                 CalciteConnection calciteConnection = connection.unwrap(CalciteConnection.class);
                 statement = calciteConnection.prepareStatement(datasourceRequest.getQuery());
+                bindPreparedStatementValues(statement, datasourceRequest.getTableFieldWithValues(), null, null, null);
                 resultSet = statement.executeQuery();
                 ResultSetMetaData metaData = resultSet.getMetaData();
                 int columnCount = metaData.getColumnCount();
@@ -315,11 +326,12 @@ public class CalciteProvider extends Provider {
         String table = datasourceRequest.getTable();
         if (StringUtils.isEmpty(table)) {
             ResultSet resultSet = null;
-            try (Connection con = getConnectionFromPool(datasourceRequest.getDatasource().getId()); Statement statement = getStatement(con, 30)) {
-                if (DatasourceConfiguration.DatasourceType.valueOf(datasourceSchemaDTO.getType()) == DatasourceConfiguration.DatasourceType.oracle) {
-                    statement.executeUpdate("ALTER SESSION SET CURRENT_SCHEMA = " + datasourceConfiguration.getSchema());
-                }
-                resultSet = statement.executeQuery(datasourceRequest.getQuery());
+            String oracleCharset = normalizeOracleCharset(datasourceConfiguration.getCharset());
+            String oracleTargetCharset = normalizeOracleCharset(datasourceConfiguration.getTargetCharset());
+            try (Connection con = getConnectionFromPool(datasourceRequest.getDatasource().getId())) {
+                Statement statement = getStatement(datasourceSchemaDTO, con, datasourceRequest, datasourceConfiguration, null);
+                bindPreparedStatementValues(statement, datasourceRequest.getTableFieldWithValues(), DatasourceConfiguration.DatasourceType.valueOf(datasourceSchemaDTO.getType()), oracleCharset, oracleTargetCharset);
+                resultSet = executeQuery(statement, datasourceRequest.getQuery());
                 datasetTableFields.addAll(getField(resultSet, datasourceRequest));
             } catch (Exception e) {
                 DEException.throwException(e.getMessage());
@@ -333,6 +345,9 @@ public class CalciteProvider extends Provider {
                 }
             }
         } else {
+            if (!getTables(datasourceRequest).stream().map(DatasetTableDTO::getTableName).collect(Collectors.toList()).contains(table)) {
+                DEException.throwException(Translator.get("i18n_invalid_table_name"));
+            }
             ResultSet resultSet = null;
             try (Connection con = getConnectionFromPool(datasourceRequest.getDatasource().getId()); Statement statement = getStatement(con, 30)) {
                 datasourceRequest.setDsVersion(con.getMetaData().getDatabaseMajorVersion());
@@ -377,6 +392,43 @@ public class CalciteProvider extends Provider {
         return datasetTableFields;
     }
 
+    private void bindPreparedStatementValues(Statement statement, List<TableFieldWithValue> tableFieldWithValues,
+                                             DatasourceConfiguration.DatasourceType datasourceType,
+                                             String oracleCharset, String oracleTargetCharset) throws SQLException {
+        if (!(statement instanceof PreparedStatement preparedStatement) || CollectionUtils.isEmpty(tableFieldWithValues)) {
+            return;
+        }
+        for (int i = 0; i < tableFieldWithValues.size(); i++) {
+            TableFieldWithValue tableFieldWithValue = tableFieldWithValues.get(i);
+            try {
+                Object valueObject = tableFieldWithValue.getValue();
+                if (valueObject instanceof String
+                        && datasourceType == DatasourceConfiguration.DatasourceType.oracle
+                        && StringUtils.isNotEmpty(oracleCharset)
+                        && StringUtils.isNotEmpty(oracleTargetCharset)) {
+                    valueObject = convertOracleText((String) valueObject, oracleTargetCharset, oracleCharset);
+                }
+                if (tableFieldWithValue.getType() != null && tableFieldWithValue.getType().equals(Types.CLOB) && valueObject instanceof String stringValue) {
+                    Reader reader = new StringReader(stringValue);
+                    preparedStatement.setCharacterStream(i + 1, reader, stringValue.length());
+                } else if (tableFieldWithValue.getType() != null) {
+                    preparedStatement.setObject(i + 1, valueObject, tableFieldWithValue.getType());
+                } else {
+                    preparedStatement.setObject(i + 1, valueObject);
+                }
+            } catch (SQLException | UnsupportedEncodingException e) {
+                throw new SQLException(e.getMessage() + ". VALUE: " + String.valueOf(tableFieldWithValue.getValue()) + " , TARGET TYPE: " + tableFieldWithValue.getColumnTypeName(), e);
+            }
+        }
+    }
+
+    private ResultSet executeQuery(Statement statement, String query) throws SQLException {
+        if (statement instanceof PreparedStatement preparedStatement) {
+            return preparedStatement.executeQuery();
+        }
+        return statement.executeQuery(query);
+    }
+
     private boolean isDorisCatalog(DatasourceRequest datasourceRequest) {
         if (!datasourceRequest.getDatasource().getType().equalsIgnoreCase("doris")) {
             return false;
@@ -398,44 +450,11 @@ public class CalciteProvider extends Provider {
     @Override
     public ConnectionObj getConnection(DatasourceDTO coreDatasource) throws Exception {
         ConnectionObj connectionObj = new ConnectionObj();
-        DatasourceConfiguration configuration = null;
         DatasourceConfiguration.DatasourceType datasourceType = DatasourceConfiguration.DatasourceType.valueOf(coreDatasource.getType());
-        switch (datasourceType) {
-            case mysql:
-            case mongo:
-            case StarRocks:
-            case doris:
-            case TiDB:
-            case mariadb:
-                configuration = JsonUtil.parseObject(coreDatasource.getConfiguration(), Mysql.class);
-                break;
-            case impala:
-                configuration = JsonUtil.parseObject(coreDatasource.getConfiguration(), Impala.class);
-                break;
-            case sqlServer:
-                configuration = JsonUtil.parseObject(coreDatasource.getConfiguration(), Sqlserver.class);
-                break;
-            case oracle:
-                configuration = JsonUtil.parseObject(coreDatasource.getConfiguration(), Oracle.class);
-                break;
-            case db2:
-                configuration = JsonUtil.parseObject(coreDatasource.getConfiguration(), Db2.class);
-                break;
-            case pg:
-                configuration = JsonUtil.parseObject(coreDatasource.getConfiguration(), Pg.class);
-                break;
-            case redshift:
-                configuration = JsonUtil.parseObject(coreDatasource.getConfiguration(), Redshift.class);
-                break;
-            case h2:
-                configuration = JsonUtil.parseObject(coreDatasource.getConfiguration(), H2.class);
-                break;
-            case ck:
-                configuration = JsonUtil.parseObject(coreDatasource.getConfiguration(), CK.class);
-                break;
-            default:
-                configuration = JsonUtil.parseObject(coreDatasource.getConfiguration(), Mysql.class);
-        }
+        DatasourceConfiguration configuration = parseDatasourceConfiguration(coreDatasource.getConfiguration(), datasourceType);
+        CoreDriver customDriver = resolveCustomDriver(coreDatasource.getType(), configuration.getCustomDriver());
+        String driverClassName = JdbcUrlSecurityPolicy.resolveDriverClass(coreDatasource.getType(), configuration.getDriver(), configuration.getCustomDriver(), customDriver);
+        configuration.setDriver(driverClassName);
         startSshSession(configuration, connectionObj, null);
         Properties props = new Properties();
         if (StringUtils.isNotBlank(configuration.getUsername())) {
@@ -444,8 +463,7 @@ public class CalciteProvider extends Provider {
         if (StringUtils.isNotBlank(configuration.getPassword())) {
             props.setProperty("password", configuration.getPassword());
         }
-        String driverClassName = configuration.getDriver();
-        ExtendedJdbcClassLoader jdbcClassLoader = extendedJdbcClassLoader;
+        ExtendedJdbcClassLoader jdbcClassLoader = JdbcUrlSecurityPolicy.isDefaultCustomDriver(configuration.getCustomDriver()) ? extendedJdbcClassLoader : getCustomJdbcClassLoader(customDriver);
         Connection conn = null;
         try {
             Driver driverClass = (Driver) jdbcClassLoader.loadClass(driverClassName).newInstance();
@@ -456,6 +474,40 @@ public class CalciteProvider extends Provider {
         }
         connectionObj.setConnection(conn);
         return connectionObj;
+    }
+
+    private DatasourceConfiguration parseDatasourceConfiguration(String config, DatasourceConfiguration.DatasourceType datasourceType) {
+        return switch (datasourceType) {
+            case mysql, StarRocks, doris, TiDB, mariadb -> JsonUtil.parseObject(config, Mysql.class);
+            case mongo -> JsonUtil.parseObject(config, Mongo.class);
+            case impala -> JsonUtil.parseObject(config, Impala.class);
+            case sqlServer -> JsonUtil.parseObject(config, Sqlserver.class);
+            case oracle -> JsonUtil.parseObject(config, Oracle.class);
+            case db2 -> JsonUtil.parseObject(config, Db2.class);
+            case pg -> JsonUtil.parseObject(config, Pg.class);
+            case redshift -> JsonUtil.parseObject(config, Redshift.class);
+            case h2 -> JsonUtil.parseObject(config, H2.class);
+            case ck -> JsonUtil.parseObject(config, CK.class);
+            default -> JsonUtil.parseObject(config, Mysql.class);
+        };
+    }
+
+    private CoreDriver resolveCustomDriver(String datasourceType, String customDriver) {
+        if (JdbcUrlSecurityPolicy.isDefaultCustomDriver(customDriver)) {
+            return null;
+        }
+        Long customDriverId;
+        try {
+            customDriverId = Long.valueOf(customDriver);
+        } catch (NumberFormatException e) {
+            DEException.throwException("invalid driver");
+            return null;
+        }
+        CoreDriver coreDriver = coreDriverMapper.selectById(customDriverId);
+        if (coreDriver == null || !StringUtils.equalsIgnoreCase(coreDriver.getType(), datasourceType)) {
+            DEException.throwException("invalid driver");
+        }
+        return coreDriver;
     }
 
     private DatasetTableDTO getTableDesc(DatasourceRequest datasourceRequest, ResultSet resultSet) throws SQLException {
@@ -490,6 +542,8 @@ public class CalciteProvider extends Provider {
 
         // schema
         ResultSet resultSet = null;
+        String oracleCharset = normalizeOracleCharset(datasourceConfiguration.getCharset());
+        String oracleTargetCharset = normalizeOracleCharset(datasourceConfiguration.getTargetCharset());
 
         try (Connection con = getConnectionFromPool(datasourceRequest.getDatasource().getId())) {
 
@@ -502,9 +556,9 @@ public class CalciteProvider extends Provider {
                         Object valueObject = datasourceRequest.getTableFieldWithValues().get(i).getValue();
 
                         if (valueObject instanceof String && DatasourceConfiguration.DatasourceType.valueOf(value.getType()) == DatasourceConfiguration.DatasourceType.oracle) {
-                            if (StringUtils.isNotEmpty(datasourceConfiguration.getCharset()) && StringUtils.isNotEmpty(datasourceConfiguration.getTargetCharset())) {
+                            if (StringUtils.isNotEmpty(oracleCharset) && StringUtils.isNotEmpty(oracleTargetCharset)) {
                                 //转换为数据库的字符集
-                                valueObject = new String(((String) valueObject).getBytes(datasourceConfiguration.getTargetCharset()), datasourceConfiguration.getCharset());
+                                valueObject = convertOracleText((String) valueObject, oracleTargetCharset, oracleCharset);
                             }
                             if (datasourceRequest.getTableFieldWithValues().get(i).getType().equals(Types.CLOB)) {
                                 Reader reader = new StringReader((String) valueObject);
@@ -552,6 +606,8 @@ public class CalciteProvider extends Provider {
         DatasourceConfiguration datasourceConfiguration = JsonUtil.parseObject(datasourceRequest.getDatasource().getConfiguration(), DatasourceConfiguration.class);
         // schema
         ResultSet resultSet = null;
+        String oracleCharset = normalizeOracleCharset(datasourceConfiguration.getCharset());
+        String oracleTargetCharset = normalizeOracleCharset(datasourceConfiguration.getTargetCharset());
 
         try (Connection con = getConnectionFromPool(datasourceRequest.getDatasource().getId())) {
 
@@ -563,9 +619,9 @@ public class CalciteProvider extends Provider {
                     try {
                         Object valueObject = datasourceRequest.getTableFieldWithValues().get(i).getValue();
                         if (valueObject instanceof String && DatasourceConfiguration.DatasourceType.valueOf(value.getType()) == DatasourceConfiguration.DatasourceType.oracle) {
-                            if (StringUtils.isNotEmpty(datasourceConfiguration.getCharset()) && StringUtils.isNotEmpty(datasourceConfiguration.getTargetCharset())) {
+                            if (StringUtils.isNotEmpty(oracleCharset) && StringUtils.isNotEmpty(oracleTargetCharset)) {
                                 //转换为数据库的字符集
-                                valueObject = new String(((String) valueObject).getBytes(datasourceConfiguration.getTargetCharset()), datasourceConfiguration.getCharset());
+                                valueObject = convertOracleText((String) valueObject, oracleTargetCharset, oracleCharset);
                             }
                             if (datasourceRequest.getTableFieldWithValues().get(i).getType().equals(Types.CLOB)) {
                                 Reader reader = new StringReader((String) valueObject);
@@ -611,8 +667,10 @@ public class CalciteProvider extends Provider {
             statement.executeUpdate("ALTER SESSION SET CURRENT_SCHEMA = " + datasourceConfiguration.getSchema());
             statement.executeUpdate("ALTER SESSION SET NLS_TIMESTAMP_FORMAT = 'YYYY-MM-DD HH24:MI:SS'");
             //调整字符集
-            if (StringUtils.isNotEmpty(datasourceConfiguration.getCharset()) && StringUtils.isNotEmpty(datasourceConfiguration.getTargetCharset())) {
-                datasourceRequest.setQuery(new String(datasourceRequest.getQuery().getBytes(datasourceConfiguration.getTargetCharset()), datasourceConfiguration.getCharset()));
+            String oracleCharset = normalizeOracleCharset(datasourceConfiguration.getCharset());
+            String oracleTargetCharset = normalizeOracleCharset(datasourceConfiguration.getTargetCharset());
+            if (StringUtils.isNotEmpty(oracleCharset) && StringUtils.isNotEmpty(oracleTargetCharset)) {
+                datasourceRequest.setQuery(convertOracleText(datasourceRequest.getQuery(), oracleTargetCharset, oracleCharset));
             }
         }
         statement = getPreparedStatement(con, datasourceConfiguration.getQueryTimeout(), datasourceRequest.getQuery(), datasourceRequest.getTableFieldWithValues(), autoIncrementPkName, datasourceConfiguration);
@@ -626,6 +684,8 @@ public class CalciteProvider extends Provider {
         DatasourceConfiguration datasourceConfiguration = JsonUtil.parseObject(datasourceRequest.getDatasource().getConfiguration(), DatasourceConfiguration.class);
         // schema
         ResultSet resultSet = null;
+        String oracleCharset = normalizeOracleCharset(datasourceConfiguration.getCharset());
+        String oracleTargetCharset = normalizeOracleCharset(datasourceConfiguration.getTargetCharset());
         try (Connection con = getConnectionFromPool(datasourceRequest.getDatasource().getId())) {
 
             Statement statement = getStatement(value, con, datasourceRequest, datasourceConfiguration, autoIncrementPkName);
@@ -638,9 +698,9 @@ public class CalciteProvider extends Provider {
                         Object valueObject = datasourceRequest.getTableFieldWithValues().get(i).getValue();
 
                         if (valueObject instanceof String && DatasourceConfiguration.DatasourceType.valueOf(value.getType()) == DatasourceConfiguration.DatasourceType.oracle) {
-                            if (StringUtils.isNotEmpty(datasourceConfiguration.getCharset()) && StringUtils.isNotEmpty(datasourceConfiguration.getTargetCharset())) {
+                            if (StringUtils.isNotEmpty(oracleCharset) && StringUtils.isNotEmpty(oracleTargetCharset)) {
                                 //转换为数据库的字符集
-                                valueObject = new String(((String) valueObject).getBytes(datasourceConfiguration.getTargetCharset()), datasourceConfiguration.getCharset());
+                                valueObject = convertOracleText((String) valueObject, oracleTargetCharset, oracleCharset);
                             }
                             if (datasourceRequest.getTableFieldWithValues().get(i).getType().equals(Types.CLOB)) {
                                 Reader reader = new StringReader((String) valueObject);
@@ -719,10 +779,10 @@ public class CalciteProvider extends Provider {
             DatasourceConfiguration jdbcConfiguration = JsonUtil.parseObject(datasourceRequest.getDatasource().getConfiguration(), DatasourceConfiguration.class);
 
             if (StringUtils.isNotEmpty(jdbcConfiguration.getCharset())) {
-                originCharset = jdbcConfiguration.getCharset();
+                originCharset = normalizeOracleCharset(jdbcConfiguration.getCharset());
             }
             if (StringUtils.isNotEmpty(jdbcConfiguration.getTargetCharset())) {
-                targetCharset = jdbcConfiguration.getTargetCharset();
+                targetCharset = normalizeOracleCharset(jdbcConfiguration.getTargetCharset());
             }
         }
         List<String[]> list = new LinkedList<>();
@@ -772,6 +832,26 @@ public class CalciteProvider extends Provider {
             list.add(row);
         }
         return list;
+    }
+
+    private String normalizeOracleCharset(String charset) {
+        if (StringUtils.isBlank(charset) || StringUtils.equalsIgnoreCase(charset, "Default")) {
+            return null;
+        }
+        String normalized = StringUtils.equalsIgnoreCase(charset, "US7ASCII") ? "US-ASCII" : charset;
+        try {
+            return Charset.forName(normalized).name();
+        } catch (UnsupportedCharsetException | IllegalCharsetNameException e) {
+            DEException.throwException("Unsupported charset: " + charset);
+        }
+        return null;
+    }
+
+    private String convertOracleText(String value, String fromCharset, String toCharset) throws UnsupportedEncodingException {
+        if (StringUtils.isEmpty(value) || StringUtils.isBlank(fromCharset) || StringUtils.isBlank(toCharset)) {
+            return value;
+        }
+        return new String(value.getBytes(fromCharset), toCharset);
     }
 
     @Override
@@ -1276,7 +1356,36 @@ public class CalciteProvider extends Provider {
                     DEException.throwException(Translator.get("i18n_schema_is_empty"));
                 }
 
-                sql = String.format("SELECT \n" + "    c.name ,t.name ,ep.value, 0, 0  \n" + "FROM \n" + "    sys.columns AS c\n" + "LEFT JOIN  sys.extended_properties AS ep ON c.object_id = ep.major_id AND c.column_id = ep.minor_id\n" + "LEFT JOIN sys.types AS t ON c.user_type_id = t.user_type_id\n" + "LEFT JOIN sys.objects AS o ON c.object_id = o.object_id\n" + "WHERE  o.name = '%s'", datasourceRequest.getTable());
+                sql = String.format("""
+                        SELECT
+                            c.name,
+                            t.name,
+                            CAST(ep.value AS NVARCHAR(4000)),
+                            CASE
+                                WHEN pk.column_id IS NOT NULL THEN 1
+                                ELSE 0
+                                END,
+                            COLUMNPROPERTY(c.object_id, c.name, 'IsIdentity')
+                        FROM sys.columns AS c
+                                 INNER JOIN sys.objects AS o ON c.object_id = o.object_id
+                                 INNER JOIN sys.schemas AS s ON o.schema_id = s.schema_id
+                                 LEFT JOIN sys.types AS t ON c.user_type_id = t.user_type_id
+                                 LEFT JOIN sys.extended_properties AS ep
+                                           ON c.object_id = ep.major_id
+                                               AND c.column_id = ep.minor_id
+                                               AND ep.name = 'MS_Description'
+                                 LEFT JOIN (
+                            SELECT ic.object_id, ic.column_id
+                            FROM sys.indexes i
+                                     INNER JOIN sys.index_columns ic
+                                                ON i.object_id = ic.object_id
+                                                    AND i.index_id = ic.index_id
+                            WHERE i.is_primary_key = 1
+                        ) pk ON c.object_id = pk.object_id AND c.column_id = pk.column_id
+                        WHERE o.name = '%s'
+                          AND s.name = '%s'
+                        ORDER BY c.column_id
+                        """, datasourceRequest.getTable(), configuration.getSchema());
                 break;
             case pg:
                 configuration = JsonUtil.parseObject(datasourceRequest.getDatasource().getConfiguration(), Pg.class);
@@ -1343,8 +1452,8 @@ public class CalciteProvider extends Provider {
         return sql;
     }
 
-    private List<String> getTablesSql(DatasourceRequest datasourceRequest) throws DEException {
-        List<String> tableSqls = new ArrayList<>();
+    private List<QueryAndParams> getTablesSql(DatasourceRequest datasourceRequest) throws DEException {
+        List<QueryAndParams> tableSqls = new ArrayList<>();
         DatasourceConfiguration.DatasourceType datasourceType = DatasourceConfiguration.DatasourceType.valueOf(datasourceRequest.getDatasource().getType());
         DatasourceConfiguration configuration = null;
         String database = "";
@@ -1362,13 +1471,13 @@ public class CalciteProvider extends Provider {
                     database = databasePrams[0];
                 }
                 if (database.contains(".")) {
-                    tableSqls.add("show tables");
+                    tableSqls.add(new QueryAndParams("show tables"));
                 } else {
-                    tableSqls.add(String.format("SELECT TABLE_NAME,TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = '%s' ;", database));
+                    tableSqls.add(new QueryAndParams("SELECT TABLE_NAME,TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ?", database));
                 }
                 break;
             case mongo:
-                tableSqls.add("show tables");
+                tableSqls.add(new QueryAndParams("show tables"));
                 break;
             case mysql:
             case mariadb:
@@ -1383,44 +1492,112 @@ public class CalciteProvider extends Provider {
                     String[] databasePrams = matcher.group(3).split("\\?");
                     database = databasePrams[0];
                 }
-                tableSqls.add(String.format("SELECT TABLE_NAME,TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = '%s' ;", database));
+                tableSqls.add(new QueryAndParams("SELECT TABLE_NAME,TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ?", database));
                 break;
             case oracle:
                 configuration = JsonUtil.parseObject(datasourceRequest.getDatasource().getConfiguration(), Oracle.class);
                 if (StringUtils.isEmpty(configuration.getSchema())) {
                     DEException.throwException(Translator.get("i18n_schema_is_empty"));
                 }
-                tableSqls.add("select table_name, comments, owner  from all_tab_comments where owner='" + configuration.getSchema() + "' AND table_type = 'TABLE'");
-                tableSqls.add("select table_name, comments, owner  from all_tab_comments where owner='" + configuration.getSchema() + "' AND table_type = 'VIEW'");
-                tableSqls.add("SELECT \n" + "    m.mview_name,\n" + "    c.comments\n" + "FROM \n" + "    ALL_MVIEWS m\n" + "LEFT JOIN \n" + "    ALL_TAB_COMMENTS c \n" + "ON \n" + "    m.owner = c.owner \n" + "    AND m.mview_name = c.table_name\n" + "    AND c.table_type = 'MATERIALIZED VIEW'\n" + "WHERE m.OWNER ='DE_SCHEMA'".replace("DE_SCHEMA", configuration.getSchema()));
+                tableSqls.add(new QueryAndParams("select table_name, comments, owner from all_tab_comments where owner = ? AND table_type = 'TABLE'", configuration.getSchema()));
+                tableSqls.add(new QueryAndParams("select table_name, comments, owner from all_tab_comments where owner = ? AND table_type = 'VIEW'", configuration.getSchema()));
+                tableSqls.add(new QueryAndParams("SELECT \n" +
+                        "    m.mview_name,\n" +
+                        "    c.comments\n" +
+                        "FROM \n" +
+                        "    ALL_MVIEWS m\n" +
+                        "LEFT JOIN \n" +
+                        "    ALL_TAB_COMMENTS c \n" +
+                        "ON \n" +
+                        "    m.owner = c.owner \n" +
+                        "    AND m.mview_name = c.table_name\n" +
+                        "    AND c.table_type = 'MATERIALIZED VIEW'\n" +
+                        "WHERE m.OWNER = ?", configuration.getSchema()));
                 break;
             case db2:
                 configuration = JsonUtil.parseObject(datasourceRequest.getDatasource().getConfiguration(), Db2.class);
                 if (StringUtils.isEmpty(configuration.getSchema())) {
                     DEException.throwException(Translator.get("i18n_schema_is_empty"));
                 }
-                tableSqls.add("select TABNAME, REMARKS from syscat.tables  WHERE TABSCHEMA ='DE_SCHEMA' AND \"TYPE\" = 'T'".replace("DE_SCHEMA", configuration.getSchema()));
+                tableSqls.add(new QueryAndParams("select TABNAME, REMARKS from syscat.tables WHERE TABSCHEMA = ? AND \"TYPE\" = 'T'", configuration.getSchema()));
                 break;
             case sqlServer:
                 configuration = JsonUtil.parseObject(datasourceRequest.getDatasource().getConfiguration(), Sqlserver.class);
                 if (StringUtils.isEmpty(configuration.getSchema())) {
                     DEException.throwException(Translator.get("i18n_schema_is_empty"));
                 }
-                tableSqls.add("SELECT   \n" + "    t.name AS TableName,  \n" + "    ep.value AS TableDescription  \n" + "FROM   \n" + "    sys.tables t  \n" + "LEFT OUTER JOIN   sys.schemas sc ON sc.schema_id =t.schema_id \n" + "LEFT OUTER JOIN   \n" + "    sys.extended_properties ep ON t.object_id = ep.major_id   \n" + "                               AND ep.minor_id = 0   \n" + "                               AND ep.class = 1  \n" + "                               AND ep.name = 'MS_Description'\n" + "where sc.name ='DS_SCHEMA'".replace("DS_SCHEMA", configuration.getSchema()));
-                tableSqls.add("SELECT   \n" + "    t.name AS TableName,  \n" + "    ep.value AS TableDescription  \n" + "FROM   \n" + "    sys.views t  \n" + "LEFT OUTER JOIN   sys.schemas sc ON sc.schema_id =t.schema_id \n" + "LEFT OUTER JOIN   \n" + "    sys.extended_properties ep ON t.object_id = ep.major_id   \n" + "                               AND ep.minor_id = 0   \n" + "                               AND ep.class = 1  \n" + "                               AND ep.name = 'MS_Description'\n" + "where sc.name ='DS_SCHEMA'".replace("DS_SCHEMA", configuration.getSchema()));
+                tableSqls.add(new QueryAndParams("SELECT   \n" +
+                        "    t.name AS TableName,  \n" +
+                        "    ep.value AS TableDescription  \n" +
+                        "FROM   \n" +
+                        "    sys.tables t  \n" +
+                        "LEFT OUTER JOIN   sys.schemas sc ON sc.schema_id =t.schema_id \n" +
+                        "LEFT OUTER JOIN   \n" +
+                        "    sys.extended_properties ep ON t.object_id = ep.major_id   \n" +
+                        "                               AND ep.minor_id = 0   \n" +
+                        "                               AND ep.class = 1  \n" +
+                        "                               AND ep.name = 'MS_Description'\n" +
+                        "where sc.name = ?", configuration.getSchema()));
+                tableSqls.add(new QueryAndParams("SELECT   \n" +
+                        "    t.name AS TableName,  \n" +
+                        "    ep.value AS TableDescription  \n" +
+                        "FROM   \n" +
+                        "    sys.views t  \n" +
+                        "LEFT OUTER JOIN   sys.schemas sc ON sc.schema_id =t.schema_id \n" +
+                        "LEFT OUTER JOIN   \n" +
+                        "    sys.extended_properties ep ON t.object_id = ep.major_id   \n" +
+                        "                               AND ep.minor_id = 0   \n" +
+                        "                               AND ep.class = 1  \n" +
+                        "                               AND ep.name = 'MS_Description'\n" +
+                        "where sc.name = ?", configuration.getSchema()));
                 break;
             case pg:
                 configuration = JsonUtil.parseObject(datasourceRequest.getDatasource().getConfiguration(), Pg.class);
                 if (StringUtils.isEmpty(configuration.getSchema())) {
                     DEException.throwException(Translator.get("i18n_schema_is_empty"));
                 }
-                tableSqls.add("SELECT  \n" + "    relname AS TableName,  \n" + "    obj_description(relfilenode::regclass, 'pg_class') AS TableDescription  \n" + "FROM  \n" + "    pg_class  \n" + "WHERE  \n" + "   relkind in  ('r','p', 'f')  \n" + "    AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'SCHEMA') ".replace("SCHEMA", configuration.getSchema()));
-                tableSqls.add("SELECT \n" + "    c.relname AS view_name,\n" + "    COALESCE(d.description, 'No description provided') AS view_description\n" + "FROM \n" + "    pg_class c\n" + "JOIN \n" + "    pg_namespace n ON c.relnamespace = n.oid\n" + "LEFT JOIN \n" + "    pg_description d ON c.oid = d.objoid\n" + "WHERE \n" + "    c.relkind = 'v'  \n" + "    AND n.nspname = 'SCHEMA'".replace("SCHEMA", configuration.getSchema()));
-                tableSqls.add("SELECT \n" + "    c.relname AS materialized_view_name,\n" + "    COALESCE(d.description, '') AS view_description\n" + "FROM \n" + "    pg_class c\n" + "JOIN \n" + "    pg_namespace n ON c.relnamespace = n.oid\n" + "LEFT JOIN \n" + "    pg_description d ON c.oid = d.objoid\n" + "WHERE \n" + "    c.relkind = 'm' and n.nspname ='SCHEMA';  ".replace("SCHEMA", configuration.getSchema()));
+                tableSqls.add(new QueryAndParams("SELECT  \n" +
+                        "    relname AS TableName,  \n" +
+                        "    obj_description(relfilenode::regclass, 'pg_class') AS TableDescription  \n" +
+                        "FROM  \n" +
+                        "    pg_class  \n" +
+                        "WHERE  \n" +
+                        "   relkind in ('r','p', 'f')  \n" +
+                        "    AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = ?)", configuration.getSchema()));
+                tableSqls.add(new QueryAndParams("SELECT \n" +
+                        "    c.relname AS view_name,\n" +
+                        "    COALESCE(d.description, '') AS view_description\n" +
+                        "FROM \n" +
+                        "    pg_class c\n" +
+                        "JOIN \n" +
+                        "    pg_namespace n ON c.relnamespace = n.oid\n" +
+                        "LEFT JOIN \n" +
+                        "    pg_description d ON c.oid = d.objoid\n" +
+                        "WHERE \n" +
+                        "    c.relkind = 'v'  \n" +
+                        "    AND n.nspname = ?", configuration.getSchema()));
+                tableSqls.add(new QueryAndParams("SELECT \n" +
+                        "    c.relname AS materialized_view_name,\n" +
+                        "    COALESCE(d.description, '') AS view_description\n" +
+                        "FROM \n" +
+                        "    pg_class c\n" +
+                        "JOIN \n" +
+                        "    pg_namespace n ON c.relnamespace = n.oid\n" +
+                        "LEFT JOIN \n" +
+                        "    pg_description d ON c.oid = d.objoid\n" +
+                        "WHERE \n" +
+                        "    c.relkind = 'm' and n.nspname = ?", configuration.getSchema()));
                 break;
             case redshift:
                 configuration = JsonUtil.parseObject(datasourceRequest.getDatasource().getConfiguration(), CK.class);
-                tableSqls.add("SELECT  \n" + "    relname AS TableName,  \n" + "    obj_description(relfilenode::regclass, 'pg_class') AS TableDescription  \n" + "FROM  \n" + "    pg_class  \n" + "WHERE  \n" + "   relkind in  ('r','p', 'f')  \n" + "    AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'SCHEMA') ".replace("SCHEMA", configuration.getSchema()));
+                tableSqls.add(new QueryAndParams("SELECT  \n" +
+                        "    relname AS TableName,  \n" +
+                        "    obj_description(relfilenode::regclass, 'pg_class') AS TableDescription  \n" +
+                        "FROM  \n" +
+                        "    pg_class  \n" +
+                        "WHERE  \n" +
+                        "   relkind in ('r','p', 'f')  \n" +
+                        "    AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = ?)", configuration.getSchema()));
                 break;
             case ck:
                 configuration = JsonUtil.parseObject(datasourceRequest.getDatasource().getConfiguration(), CK.class);
@@ -1434,18 +1611,38 @@ public class CalciteProvider extends Provider {
                     database = databasePrams[0];
                 }
                 if (datasourceRequest.getDsVersion() < 22) {
-                    tableSqls.add("SELECT name, name FROM system.tables where database='DATABASE';".replace("DATABASE", database));
+                    tableSqls.add(new QueryAndParams("SELECT name, name FROM system.tables where database = ?", database));
                 } else {
-                    tableSqls.add("SELECT name, comment FROM system.tables where database='DATABASE';".replace("DATABASE", database));
+                    tableSqls.add(new QueryAndParams("SELECT name, comment FROM system.tables where database = ?", database));
                 }
 
 
                 break;
             default:
-                tableSqls.add("show tables");
+                tableSqls.add(new QueryAndParams("show tables"));
         }
         return tableSqls;
 
+    }
+
+    private PreparedStatement prepareStatement(Connection connection, QueryAndParams queryAndParams, int queryTimeout) throws SQLException {
+        PreparedStatement statement = connection.prepareStatement(queryAndParams.sql());
+        statement.setQueryTimeout(queryTimeout);
+        List<Object> params = queryAndParams.params();
+        for (int i = 0; i < params.size(); i++) {
+            statement.setObject(i + 1, params.get(i));
+        }
+        return statement;
+    }
+
+    private record QueryAndParams(String sql, List<Object> params) {
+        private QueryAndParams(String sql) {
+            this(sql, Collections.emptyList());
+        }
+
+        private QueryAndParams(String sql, Object... params) {
+            this(sql, Arrays.asList(params));
+        }
     }
 
     private String getSchemaSql(DatasourceDTO datasource) throws DEException {
@@ -1625,6 +1822,7 @@ public class CalciteProvider extends Provider {
                 startSshSession(configuration, null, datasourceDTO.getId());
             }
         } catch (Exception e) {
+            LogUtil.error(e.getMessage(), e);
             DEException.throwException(e.getMessage());
         }
     }
@@ -1676,7 +1874,10 @@ public class CalciteProvider extends Provider {
             BasicDataSource basicDataSource = (BasicDataSource) jdbcSchema.getDataSource();
             basicDataSource.setMaxWaitMillis(5 * 1000);
             return basicDataSource.getConnection();
+        } catch (DEException e) {
+            throw e;
         } catch (Exception e) {
+            LogUtil.error(e.getMessage(), e);
             DEException.throwException(Translator.get("i18n_invalid_connection") + e.getMessage());
         }
         return null;

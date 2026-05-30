@@ -70,6 +70,10 @@ const pvpOptions = [
   { value: '3', label: t('commons.date.three_months') },
   { value: '4', label: t('commons.date.one_month') }
 ]
+const embeddedExportModeOptions = [
+  { value: 'sync', label: t('setting_basic.exportModeSync') },
+  { value: 'async', label: t('setting_basic.exportModeAsync') }
+]
 const tooltips = [
   {
     key: 'setting_basic.defaultOpen',
@@ -128,7 +132,8 @@ const state = reactive({
     { value: '1', label: 'LDAP' },
     { value: '2', label: 'OIDC' },
     { value: '3', label: 'CAS' },
-    { value: '9', label: 'OAuth2' }
+    { value: '9', label: 'OAuth2' },
+    { value: '10', label: 'Saml2' }
   ],
   sortOptions: [
     { value: '0', label: t('resource_sort.time_asc') },
@@ -241,6 +246,13 @@ const search = cb => {
           }
         } else {
           item.pval = state.openOptions[0].label
+        }
+      } else if (item.pkey === 'basic.embeddedExportMode') {
+        if (item.pval) {
+          const r = embeddedExportModeOptions.filter(cur => cur.value === item.pval)
+          item.pval = r?.length ? r[0].label : embeddedExportModeOptions[0].label
+        } else {
+          item.pval = embeddedExportModeOptions[0].label
         }
       } else {
         item.pval = item.pval

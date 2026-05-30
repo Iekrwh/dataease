@@ -75,7 +75,7 @@ const changeThreshold = () => {
 const changeSplitThreshold = (threshold: string) => {
   // check input
   if (threshold) {
-    const regex = /^(\d+)(,\d+)*$/
+    const regex = /^(\d+(?:\.\d+)?)(,\d+(?:\.\d+)?)*$/
     if (!regex.test(threshold)) {
       ElMessage.error(t('chart.gauge_threshold_format_error'))
       return
@@ -193,6 +193,10 @@ const changeTableThreshold = () => {
     }
     for (let j = 0; j < field.conditions.length; j++) {
       const ele = field.conditions[j]
+      if (props.chart.type === 'picture-group' && !ele.url) {
+        ElMessage.error(t('visualization.img_can_not_null'))
+        return
+      }
       if (!ele.term || ele.term === '') {
         ElMessage.error(t('chart.exp_can_not_empty'))
         return
@@ -227,6 +231,8 @@ const changeTableThreshold = () => {
             return
           }
           if (
+            !ele.term.includes('null') &&
+            !ele.term.includes('empty') &&
             (field.field.deType === 2 || field.field.deType === 3 || field.field.deType === 4) &&
             parseFloat(ele.value).toString() === 'NaN'
           ) {
@@ -1100,7 +1106,7 @@ init()
       v-model="state.editTableThresholdDialog"
       :title="t('chart.threshold')"
       :visible="state.editTableThresholdDialog"
-      width="1050px"
+      width="1250px"
       class="dialog-css"
       append-to-body
     >
@@ -1281,7 +1287,7 @@ span {
 }
 
 .threshold-container {
-  border-radius: 4px;
+  border-radius: 6px;
   border: 1px solid #dee0e3;
 
   margin-top: 8px;

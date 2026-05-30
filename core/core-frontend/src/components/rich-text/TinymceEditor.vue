@@ -71,7 +71,10 @@ const init = ref({
   placeholder: '',
   outer_placeholder: '双击输入文字',
   inline: inline.value,
-  branding: true
+  branding: true,
+  relative_urls: false,
+  remove_script_host: false,
+  convert_urls: false
 })
 tinymce.init({})
 </script>
@@ -104,7 +107,7 @@ tinymce.init({})
 }
 
 .tox {
-  border-radius: 4px !important;
+  border-radius: 6px !important;
   border-bottom: 1px solid #ccc !important;
   z-index: 1000;
 }

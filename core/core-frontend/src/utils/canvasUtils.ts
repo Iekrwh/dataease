@@ -45,12 +45,34 @@ import { useI18n } from '@/hooks/web/useI18n'
 import { useAppearanceStoreWithOut } from '@/store/modules/appearance'
 import { useCache } from '@/hooks/web/useCache'
 import { isDesktop } from '@/utils/ModelUtil'
+import { ShorthandMode } from '@/Types'
+import { formatterItem } from '@/views/chart/components/js/formatter'
 const { t } = useI18n()
 const appearanceStore = useAppearanceStoreWithOut()
 const { wsCache } = useCache()
 export function chartTransStr2Object(targetIn, copy) {
   const target = copy === 'Y' ? cloneDeep(targetIn) : targetIn
   return target
+}
+
+const getNewInnerPadding = (commonGap = 0) => {
+  return {
+    mode: ShorthandMode.Uniform,
+    top: commonGap,
+    right: commonGap,
+    bottom: commonGap,
+    left: commonGap
+  }
+}
+
+const getNewBorderRadius = (commonGap = 0) => {
+  return {
+    mode: ShorthandMode.Uniform,
+    topLeft: commonGap,
+    topRight: commonGap,
+    bottomLeft: commonGap,
+    bottomRight: commonGap
+  }
 }
 
 export function chartTransObject2Str(targetIn, copy) {
@@ -98,7 +120,7 @@ export function findNewComponent(componentName, innerType, staticMap?) {
     }
   } else if (['DeDecoration', 'DynamicBackground'].includes(componentName)) {
     newComponent.style.borderWidth = 0
-    newComponent.style.innerPadding = 0
+    newComponent.style.innerPadding = getNewInnerPadding()
   }
   return newComponent
 }
@@ -118,6 +140,10 @@ export function commonHandleDragEnd(e, dvModel) {
     // 仪表板结束消息传输方式(用来清理未移入的组件)
     eventBus.emit('handleDragEnd-canvas-main', e)
   }
+}
+
+function isNumber(value) {
+  return !isNaN(value) && typeof value === 'number'
 }
 
 function matrixAdaptor(componentItem) {
@@ -171,6 +197,19 @@ export function historyItemAdaptor(
     })
   }
 
+  // 历史innerPadding 转换
+  if (isNumber(componentItem['commonBackground'].innerPadding)) {
+    componentItem['commonBackground'].innerPadding = getNewInnerPadding(
+      componentItem['commonBackground'].innerPadding
+    )
+  }
+
+  // 历史borderRadius 转换
+  if (isNumber(componentItem['commonBackground'].borderRadius)) {
+    componentItem['commonBackground'].borderRadius = getNewBorderRadius(
+      componentItem['commonBackground'].borderRadius
+    )
+  }
   if (componentItem.component === 'DeTabs') {
     componentItem['editableTabsValue'] = componentItem['editableTabsValue'] || ''
     componentItem.style['showTabTitle'] =
@@ -271,12 +310,20 @@ export function historyAdaptor(
   //历史字段适配
   canvasStyleResult.component['seniorStyleSetting'] =
     canvasStyleResult.component['seniorStyleSetting'] || deepCopy(SENIOR_STYLE_SETTING_LIGHT)
+  canvasStyleResult.component['seniorStyleSetting']['pagerSize'] =
+    canvasStyleResult.component['seniorStyleSetting']['pagerSize'] || 14
   canvasStyleResult['fontFamily'] = canvasStyleResult['fontFamily'] || 'PingFang'
   canvasStyleResult.dashboard['showGrid'] = canvasStyleResult.dashboard['showGrid'] || false
   canvasStyleResult.dashboard['matrixBase'] = canvasStyleResult.dashboard['matrixBase'] || 4
   canvasStyleResult.dashboard['gapMode'] = canvasStyleResult.dashboard['gapMode'] || 'middle'
   canvasStyleResult.component['seniorStyleSetting'] =
     canvasStyleResult.component['seniorStyleSetting'] || deepCopy(SENIOR_STYLE_SETTING_LIGHT)
+
+  canvasStyleResult['suspensionViewButtonAvailable'] =
+    canvasStyleResult['suspensionViewButtonAvailable'] === undefined
+      ? true
+      : canvasStyleResult['suspensionViewButtonAvailable']
+
   canvasStyleResult['suspensionButtonAvailable'] =
     canvasStyleResult['suspensionButtonAvailable'] === undefined
       ? false
@@ -299,6 +346,27 @@ export function historyAdaptor(
     canvasStyleResult['popupButtonAvailable'] === undefined
       ? true
       : canvasStyleResult['popupButtonAvailable'] //兼容弹框区域按钮开关
+  canvasStyleResult['dialogBackgroundColor'] = canvasStyleResult['dialogBackgroundColor'] || '#fff'
+  canvasStyleResult['dialogButton'] = canvasStyleResult['dialogButton'] || '#020408'
+
+  canvasStyleResult['component']['formatterItem'] =
+    canvasStyleResult['component']['formatterItem'] || deepCopy(formatterItem)
+
+  canvasStyleResult.component.chartColor = {
+    ...canvasStyleResult.component.chartColor,
+    label: {
+      color: '#000000',
+      fontSize: 12,
+      ...(canvasStyleResult.component.chartColor?.label || {})
+    },
+    tooltip: {
+      color: '#000000',
+      fontSize: 12,
+      backgroundColor: '#FFFFFF',
+      ...(canvasStyleResult.component.chartColor?.tooltip || {})
+    }
+  }
+
   canvasDataResult.forEach(componentItem => {
     historyItemAdaptor(componentItem, reportFilterInfo, attachInfo, canvasVersion, canvasInfo)
   })
@@ -443,17 +511,15 @@ export async function backCanvasData(dvId, mobileViewInfo, busiFlag, callBack) {
       componentData.value.forEach(ele => {
         ele.inMobile = componentDataId.includes(ele.id)
         if (ele.inMobile) {
-          const { mx, my, mSizeX, mSizeY, mPropValue, mEvents, mCommonBackground } =
-            componentDataCopy.find(itx => itx.id === ele.id)
+          const { mx, my, mSizeX, mSizeY, mEvents, mCommonBackground } = componentDataCopy.find(
+            itx => itx.id === ele.id
+          )
           ele.mx = mx
           ele.my = my
           ele.mSizeX = mSizeX
           ele.mSizeY = mSizeY
           ele.mEvents = mEvents
           ele.mCommonBackground = mCommonBackground
-          if (ele.component === 'VQuery') {
-            ele.mPropValue = mPropValue
-          }
         }
       })
       Object.keys(canvasViewInfoPreview).forEach(key => {
@@ -496,7 +562,6 @@ export function initCanvasDataMobile(dvId, params, callBack) {
           mSizeX,
           mSizeY,
           mStyle,
-          mPropValue,
           mEvents,
           mCommonBackground,
           style,
@@ -509,14 +574,19 @@ export function initCanvasDataMobile(dvId, params, callBack) {
         ele.sizeX = mSizeX
         ele.sizeY = mSizeY
         ele.style = mStyle || style
-        ele.propValue = mPropValue || propValue
         ele.events = mEvents || events
         ele.commonBackground = mCommonBackground || commonBackground
+        if (ele.component === 'VQuery') {
+          ele.propValue?.forEach(queryItem => {
+            queryItem.placeholder = queryItem.mPlaceholder || queryItem.placeholder
+            queryItem.queryConditionWidth =
+              queryItem.mQueryConditionWidth || queryItem.queryConditionWidth
+          })
+        }
         if (ele.component === 'DeTabs') {
           ele.propValue?.forEach(tabItem => {
             tabItem.componentData?.forEach(tabComponent => {
               tabComponent.style = tabComponent.mStyle || tabComponent.style
-              tabComponent.propValue = tabComponent.mPropValue || tabComponent.propValue
               tabComponent.events = tabComponent.mEvents || tabComponent.events
               tabComponent.commonBackground =
                 tabComponent.mCommonBackground || tabComponent.commonBackground
@@ -1066,4 +1136,30 @@ export function syncViewTitle(element) {
       canvasViewInfo.value[element.id].customStyle.component.title = element.name
     }
   }
+}
+
+// 地图类图表，需要预先准备图片
+const mapChartTypes = ['bubble-map', 'flow-map', 'heat-map', 'map', 'symbolic-map']
+
+/**
+ * 获取画布中所有地图类图表的元素ID
+ * @param canvasDataPreview
+ */
+export function getMapElementIds(canvasDataPreview) {
+  const mapElementIds = []
+  canvasDataPreview?.forEach(item => {
+    if (mapChartTypes.includes(item.innerType)) {
+      mapElementIds.push(item.id)
+    }
+    if (item.component === 'DeTabs') {
+      item.propValue?.forEach(tabItem => {
+        tabItem.componentData?.forEach(tabComponent => {
+          if (mapChartTypes.includes(tabComponent.innerType)) {
+            mapElementIds.push(tabComponent.id)
+          }
+        })
+      })
+    }
+  })
+  return mapElementIds
 }

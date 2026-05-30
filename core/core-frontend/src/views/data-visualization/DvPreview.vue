@@ -42,6 +42,11 @@ const props = defineProps({
     type: String,
     default: 'preview'
   },
+  // 显示悬浮按钮
+  showPopBar: {
+    type: Boolean,
+    default: false
+  },
   downloadStatus: {
     required: false,
     type: Boolean,
@@ -133,6 +138,7 @@ defineExpose({
         :show-position="showPosition"
         :download-status="downloadStatus"
         :outer-screen-adaptor="screenAdaptor"
+        :show-pop-bar="showPopBar"
         :show-linkage-button="showLinkageButton"
       ></de-preview>
     </div>
@@ -142,7 +148,7 @@ defineExpose({
 <style lang="less">
 .content-outer {
   width: 100%;
-  height: calc(100vh - 112px);
+  height: calc(100vh - 100px);
   background: #f5f6f7;
   display: flex;
   overflow-y: auto;

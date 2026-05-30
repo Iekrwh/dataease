@@ -149,8 +149,15 @@ const hanedleMessage = event => {
         ele.mStyle = style
         ele.mEvents = events
         ele.mCommonBackground = commonBackground
+
         if (ele.component === 'VQuery') {
-          ele.mPropValue = propValue
+          ele.propValue = propValue
+          ele.propValue?.forEach(queryItem => {
+            queryItem['mPlaceholder'] = queryItem.placeholder
+            queryItem['mQueryConditionWidth'] = queryItem.queryConditionWidth
+            queryItem.placeholder = queryItem.tempPlaceholder
+            queryItem.queryConditionWidth = queryItem.tempQueryConditionWidth
+          })
         }
         if (ele.component === 'DeTabs') {
           ele.propValue.forEach(tabItem => {
@@ -164,9 +171,6 @@ const hanedleMessage = event => {
               tabComponent.mStyle = tStyle
               tabComponent.mEvents = tEvents
               tabComponent.mCommonBackground = tCommonBackground
-              if (tabComponent.component === 'VQuery') {
-                tabComponent.mPropValue = tPropValue
-              }
             })
           })
         }
@@ -394,7 +398,7 @@ const save = () => {
       .switch-pc {
         &::after {
           content: '';
-          border-radius: 4px;
+          border-radius: 6px;
           display: none;
           position: absolute;
           width: calc(100% + 10px);
@@ -574,7 +578,7 @@ const save = () => {
       float: left;
       background: #fff;
       padding: 4px;
-      border-radius: 4px;
+      border-radius: 6px;
       border: 1px solid #dee0e3;
       &:nth-child(2n) {
         margin-right: -1px;
@@ -611,7 +615,7 @@ const save = () => {
       top: 12px;
       right: 12px;
       border: 2px solid #8f959e;
-      border-radius: 4px;
+      border-radius: 6px;
       z-index: 24;
       cursor: pointer;
       &:hover {

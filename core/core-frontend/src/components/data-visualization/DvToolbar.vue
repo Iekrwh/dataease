@@ -250,6 +250,7 @@ const isEmbedded = computed(() => appStore.getIsDataEaseBi || appStore.getIsIfra
 
 const backHandler = (url: string) => {
   if (isEmbedded.value) {
+    wsCache.set(`dv-info-id`, dvInfo.value.id)
     embeddedStore.clearState()
     useEmitt().emitter.emit('changeCurrentComponent', 'ScreenPanel')
     return
@@ -463,6 +464,7 @@ const fullScreenPreview = () => {
       <div class="right-area">
         <el-tooltip
           effect="dark"
+          :offset="14"
           :content="t('visualization.external_parameter_settings')"
           placement="bottom"
         >
@@ -630,7 +632,7 @@ const fullScreenPreview = () => {
         background-color: #050e21;
         outline: none;
         border: 1px solid #295acc;
-        border-radius: 4px;
+        border-radius: 6px;
         padding: 0 4px;
         height: 100%;
       }
@@ -712,6 +714,11 @@ const fullScreenPreview = () => {
   }
   .handle-icon {
     color: rgba(166, 166, 166, 1) !important;
+  }
+
+  .ed-dropdown-menu__item:not(.is-disabled):focus,
+  .ed-dropdown-menu__item:not(.is-disabled):hover {
+    background-color: #444141cc !important;
   }
 }
 </style>

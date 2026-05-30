@@ -4,6 +4,8 @@ server:
   servlet:
     context-path: ${DE_CONTEXT_PATH}
 spring:
+  profiles:
+    include: ${DE_SPRING_PROFILE}
   servlet:
     multipart:
       max-file-size: 500MB
@@ -23,8 +25,8 @@ dataease:
       limit: ${DE_EXPORT_DATASET_LIMIT}
   origin-list: ${DE_ORIGIN_LIST}
   login_timeout: ${DE_LOGIN_TIMEOUT}
-  selenium-server: ${DE_SELENIUM_SERVER}
   dataease-servers: ${DE_SERVERS}
+  playwright-server: ${DE_PLAYWRIGHT_SERVER}
 task:
   executor:
     address: http://sync-task-actuator:9001

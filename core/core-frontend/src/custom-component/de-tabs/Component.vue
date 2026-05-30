@@ -27,6 +27,7 @@
           :lazy="isEditMode"
           :label="tabItem.title"
           :name="tabItem.name"
+          v-if="!tabItem.hidden"
         >
           <template #label>
             <div class="custom-tab-title" @mousedown.stop>
@@ -90,33 +91,35 @@
         v-for="(tabItem, index) in element.propValue"
         :class="{ 'switch-hidden': element.editableTabsValue !== tabItem.name }"
       >
-        <de-canvas
-          v-if="isEdit && !mobileInPc"
-          :ref="'tabCanvas_' + index"
-          :component-data="tabItem.componentData"
-          :canvas-style-data="canvasStyleData"
-          :canvas-view-info="canvasViewInfo"
-          :canvas-id="element.id + '--' + tabItem.name"
-          :class="moveActive ? 'canvas-move-in' : ''"
-          :canvas-position="'tab'"
-          :canvas-active="element.editableTabsValue === tabItem.name"
-          :font-family="fontFamily"
-        ></de-canvas>
-        <de-preview
-          v-else
-          :ref="'dashboardPreview'"
-          :dv-info="dvInfo"
-          :cur-gap="curPreviewGap"
-          :component-data="tabItem.componentData"
-          :canvas-style-data="{}"
-          :canvas-view-info="canvasViewInfo"
-          :canvas-id="element.id + '--' + tabItem.name"
-          :preview-active="element.editableTabsValue === tabItem.name"
-          :show-position="showPosition"
-          :outer-scale="scale"
-          :font-family="fontFamily"
-          :outer-search-count="searchCount"
-        ></de-preview>
+        <template v-if="!tabItem.hidden && isTabActivated(tabItem.name)">
+          <de-canvas
+            v-if="isEdit && !mobileInPc"
+            :ref="'tabCanvas_' + index"
+            :component-data="tabItem.componentData"
+            :canvas-style-data="canvasStyleData"
+            :canvas-view-info="canvasViewInfo"
+            :canvas-id="element.id + '--' + tabItem.name"
+            :class="moveActive ? 'canvas-move-in' : ''"
+            :canvas-position="'tab'"
+            :canvas-active="element.editableTabsValue === tabItem.name"
+            :font-family="fontFamily"
+          ></de-canvas>
+          <de-preview
+            v-else
+            :ref="'dashboardPreview'"
+            :dv-info="dvInfo"
+            :cur-gap="curPreviewGap"
+            :component-data="tabItem.componentData"
+            :canvas-style-data="{}"
+            :canvas-view-info="canvasViewInfo"
+            :canvas-id="element.id + '--' + tabItem.name"
+            :preview-active="element.editableTabsValue === tabItem.name"
+            :show-position="showPosition"
+            :outer-scale="scale"
+            :font-family="fontFamily"
+            :outer-search-count="searchCount"
+          ></de-preview>
+        </template>
       </div>
     </de-custom-tab>
     <el-dialog
@@ -174,6 +177,9 @@ import Board from '@/components/de-board/Board.vue'
 import ChartCarouselTooltip from '@/views/chart/components/js/g2plot_tooltip_carousel'
 import { debounce } from 'lodash-es'
 import { useEmitt } from '@/hooks/web/useEmitt'
+import { CommonBackground } from '@/components/visualization/component-background/Types'
+import { ShorthandMode } from '@/Types'
+import { checkFilterRemove } from '@/custom-component/v-query/QueryUtils'
 const dvMainStore = dvMainStoreWithOut()
 const snapshotStore = snapshotStoreWithOut()
 const { tabMoveInActiveId, bashMatrixInfo, editMode, mobileInPc } = storeToRefs(dvMainStore)
@@ -304,6 +310,27 @@ const state = reactive({
   tabShow: true,
   hoverFlag: false
 })
+
+const activatedTabs = ref(new Set())
+
+const initActivatedTab = () => {
+  if (element.value.editableTabsValue) {
+    activatedTabs.value.add(element.value.editableTabsValue)
+  }
+}
+
+watch(
+  () => element.value.editableTabsValue,
+  val => {
+    if (val) {
+      activatedTabs.value.add(val)
+    }
+  }
+)
+
+const isTabActivated = tabName => {
+  return activatedTabs.value.has(tabName)
+}
 const tabsAreaScroll = ref(false)
 
 // 无边框
@@ -326,8 +353,10 @@ const calcTabLength = () => {
       const containerDom = document.getElementById(
         'tab-' + element.value.propValue[element.value.propValue.length - 1].name
       )
-      tabsAreaScroll.value =
-        containerDom.parentNode.clientWidth > tabComponentRef.value.clientWidth - 100
+      if (containerDom) {
+        tabsAreaScroll.value =
+          containerDom?.parentNode?.clientWidth > tabComponentRef.value.clientWidth - 100
+      }
     } else {
       tabsAreaScroll.value = false
     }
@@ -357,6 +386,7 @@ function addTab() {
   const newTab = {
     name: newName,
     title: t('visualization.new_tab'),
+    hidden: false,
     componentData: [],
     closable: true
   }
@@ -370,6 +400,7 @@ function deleteCur(param) {
   let len = element.value.propValue.length
   while (len--) {
     if (element.value.propValue[len].name === param.name) {
+      const deletedTab = element.value.propValue[len]
       element.value.propValue.splice(len, 1)
       const activeIndex =
         (len - 1 + element.value.propValue.length) % element.value.propValue.length
@@ -377,6 +408,9 @@ function deleteCur(param) {
       state.tabShow = false
       nextTick(() => {
         state.tabShow = true
+        deletedTab.componentData?.forEach(tabComponent => {
+          checkFilterRemove(tabComponent)
+        })
       })
     }
   }
@@ -515,9 +549,43 @@ const backgroundStyle = backgroundParams => {
       innerPadding,
       borderRadius
     } = backgroundParams
+    const commonBackground = backgroundParams as CommonBackground
+    const innerPaddingTarget = ['Group'].includes(element.value.component) ? 0 : innerPadding
+    let innerPaddingStyle = innerPaddingTarget * scale.value + 'px'
+    const paddingMode = commonBackground.innerPadding?.mode
+    if (paddingMode === ShorthandMode.Uniform) {
+      innerPaddingStyle = `${commonBackground.innerPadding?.top * scale.value}px`
+    } else if (paddingMode === ShorthandMode.Axis) {
+      innerPaddingStyle = `${commonBackground.innerPadding?.top * scale.value}px ${
+        commonBackground.innerPadding?.left * scale.value
+      }px`
+    } else if (paddingMode === ShorthandMode.PerEdge) {
+      innerPaddingStyle = `${commonBackground.innerPadding?.top * scale.value}px ${
+        commonBackground.innerPadding?.right * scale.value
+      }px ${commonBackground.innerPadding?.bottom * scale.value}px ${
+        commonBackground.innerPadding?.left * scale.value
+      }px`
+    }
+
+    let borderRadiusStyle = borderRadius + 'px'
+    const borderRadiusMode = commonBackground.borderRadius?.mode
+    if (borderRadiusMode === ShorthandMode.Uniform) {
+      borderRadiusStyle = `${commonBackground.borderRadius?.topLeft * scale.value}px`
+    } else if (borderRadiusMode === ShorthandMode.Axis) {
+      borderRadiusStyle = `${commonBackground.borderRadius?.topLeft * scale.value}px ${
+        commonBackground.borderRadius?.bottomLeft * scale.value
+      }px`
+    } else if (borderRadiusMode === ShorthandMode.PerEdge) {
+      borderRadiusStyle = `${commonBackground.borderRadius?.topLeft * scale.value}px ${
+        commonBackground.borderRadius?.topRight * scale.value
+      }px ${commonBackground.borderRadius?.bottomRight * scale.value}px ${
+        commonBackground.borderRadius?.bottomLeft * scale.value
+      }px`
+    }
+
     let style = {
-      padding: innerPadding * scale.value + 'px',
-      borderRadius: borderRadius + 'px'
+      padding: innerPaddingStyle,
+      borderRadius: borderRadiusStyle
     }
     let colorRGBA = ''
     if (backgroundColorSelect && backgroundColor) {
@@ -661,15 +729,20 @@ const initCarousel = () => {
   if (!isEditMode.value) {
     if (element.value.carousel?.enable) {
       const switchTime = (element.value.carousel.time || 5) * 1000
+      // 过滤出可见的标签页
+      const visibleTabs = element.value.propValue.filter(tab => !tab.hidden)
+
+      // 如果没有可见的标签页，则不启动轮播
+      if (visibleTabs.length === 0) return
       let switchCount = 1
       // 轮播定时器
       carouselTimer = setInterval(() => {
         // 鼠标移入时 停止轮播
         if (!state.hoverFlag) {
-          const nowIndex = switchCount % element.value.propValue.length
+          const nowIndex = switchCount % visibleTabs.length
           switchCount++
           nextTick(() => {
-            element.value.editableTabsValue = element.value.propValue[nowIndex].name
+            element.value.editableTabsValue = visibleTabs[nowIndex].name
           })
         }
       }, switchTime)
@@ -682,11 +755,14 @@ onMounted(() => {
   if (element.value.propValue.length > 0) {
     element.value.editableTabsValue = element.value.propValue[0].name
   }
+  initActivatedTab()
   calcTabLength()
   if (['canvas', 'canvasDataV', 'edit'].includes(showPosition.value) && !mobileInPc.value) {
     eventBus.on('onTabMoveIn-' + element.value.id, componentMoveIn)
     eventBus.on('onTabMoveOut-' + element.value.id, componentMoveOut)
     eventBus.on('onTabSortChange-' + element.value.id, reShow)
+    eventBus.on('onTabDelete-' + element.value.id, deleteCur)
+    eventBus.on('onTabCopy-' + element.value.id, copyCur)
   }
   currentInstance = getCurrentInstance()
   initCarousel()
@@ -713,6 +789,8 @@ onBeforeUnmount(() => {
     eventBus.off('onTabMoveIn-' + element.value.id, componentMoveIn)
     eventBus.off('onTabMoveOut-' + element.value.id, componentMoveOut)
     eventBus.off('onTabSortChange-' + element.value.id, reShow)
+    eventBus.off('onTabDelete-' + element.value.id, deleteCur)
+    eventBus.off('onTabCopy-' + element.value.id, copyCur)
   }
 })
 onBeforeMount(() => {
@@ -786,6 +864,8 @@ onBeforeMount(() => {
   position: absolute;
   width: 100%;
   height: 100%;
+  font-style: normal;
+  font-weight: normal;
 }
 .custom-tab-title {
   .title-inner {

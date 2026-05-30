@@ -7,7 +7,12 @@ import DePreview from '@/components/data-visualization/canvas/DePreview.vue'
 import PreviewHead from '@/views/data-visualization/PreviewHead.vue'
 import EmptyBackground from '@/components/empty-background/src/EmptyBackground.vue'
 import ArrowSide from '@/views/common/DeResourceArrow.vue'
-import { initCanvasData, initCanvasDataPrepare, onInitReady } from '@/utils/canvasUtils'
+import {
+  getMapElementIds,
+  initCanvasData,
+  initCanvasDataPrepare,
+  onInitReady
+} from '@/utils/canvasUtils'
 import { useAppStoreWithOut } from '@/store/modules/app'
 import { useMoveLine } from '@/hooks/web/useMoveLine'
 import { Icon } from '@/components/icon-custom'
@@ -129,16 +134,12 @@ const loadCanvasData = (dvId, weight?) => {
     }
   )
 }
-// 地图类图表，需要预先准备图片
-const mapChartTypes = ['bubble-map', 'flow-map', 'heat-map', 'map', 'symbolic-map']
+
 const downloadH2 = type => {
   downloadStatus.value = true
-  const mapElementIds =
-    state.canvasDataPreview
-      ?.filter(ele => mapChartTypes.includes(ele.innerType))
-      .map(ele => ele.id) || []
+  const mapElementIds = getMapElementIds(state.canvasDataPreview)
   mapElementIds.forEach(id => useEmitt().emitter.emit('l7-prepare-picture', id))
-  nextTick(() => {
+  setTimeout(() => {
     const vueDom = previewCanvasContainer.value.querySelector('.canvas-container')
     downloadCanvas2(type, vueDom, state.dvInfo.name, () => {
       downloadStatus.value = false
@@ -149,7 +150,7 @@ const downloadH2 = type => {
       type === 'img' ? exportLogImg(param) : exportLogPDF(param)
       mapElementIds.forEach(id => useEmitt().emitter.emit('l7-unprepare-picture', id))
     })
-  })
+  }, 1000)
 }
 
 const downloadAsAppTemplate = downloadType => {
@@ -189,7 +190,9 @@ const checkTemplate = () => {
 
 const fileDownload = (downloadType, attachParams) => {
   downloadStatus.value = true
-  nextTick(() => {
+  const mapElementIds = getMapElementIds(state.canvasDataPreview)
+  mapElementIds.forEach(id => useEmitt().emitter.emit('l7-prepare-picture', id))
+  setTimeout(() => {
     const vueDom = previewCanvasContainer.value.querySelector('.canvas-container')
     download2AppTemplate(downloadType, vueDom, state.dvInfo.name, attachParams, () => {
       downloadStatus.value = false
@@ -198,8 +201,9 @@ const fileDownload = (downloadType, attachParams) => {
         type: state.dvInfo.type === 'dashboard' ? 'panel' : 'screen'
       }
       downloadType === 'app' ? exportLogApp(param) : exportLogTemplate(param)
+      mapElementIds.forEach(id => useEmitt().emitter.emit('l7-unprepare-picture', id))
     })
-  })
+  }, 1000)
 }
 
 const slideOpenChange = () => {
@@ -333,10 +337,18 @@ defineExpose({
         </div>
       </template>
       <template v-else-if="hasTreeData && mounted">
-        <empty-background :description="t('visualization.preview_select_tips')" img-type="select" />
+        <empty-background
+          v-if="dataInitState"
+          :description="t('visualization.preview_select_tips')"
+          img-type="select"
+        />
       </template>
       <template v-else-if="mounted">
-        <empty-background :description="t('visualization.have_none_resource')" img-type="none">
+        <empty-background
+          v-if="dataInitState"
+          :description="t('visualization.have_none_resource')"
+          img-type="none"
+        >
           <el-button v-if="rootManage && !isDataEaseBi" @click="createNew" type="primary">
             <template #icon>
               <Icon name="icon_add_outlined"><icon_add_outlined class="svg-icon" /></Icon>

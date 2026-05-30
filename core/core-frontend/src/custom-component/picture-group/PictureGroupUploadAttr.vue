@@ -4,7 +4,7 @@ import { snapshotStoreWithOut } from '@/store/modules/data-visualization/snapsho
 
 import { storeToRefs } from 'pinia'
 import { ElIcon } from 'element-plus-secondary'
-import { ref, onMounted, onBeforeUnmount, watch, PropType } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch, PropType, nextTick } from 'vue'
 import { beforeUploadCheck, uploadFileResult } from '@/api/staticResource'
 import { imgUrlTrans } from '@/utils/imgUtils'
 import eventBus from '@/utils/eventBus'
@@ -13,6 +13,9 @@ import { useI18n } from '@/hooks/web/useI18n'
 import { toRefs } from 'vue'
 import { useEmitt } from '@/hooks/web/useEmitt'
 const { t } = useI18n()
+
+let uploadCount = 0
+let totalUploads = 0
 
 const props = defineProps({
   themes: {
@@ -66,10 +69,33 @@ const handleRemove = file => {
 }
 async function upload(file) {
   if (element.value.propValue.urlList.length < 10) {
-    uploadFileResult(file.file, fileUrl => {
-      snapshotStore.recordSnapshotCache('pic-upload')
-      element.value.propValue.urlList.unshift({ name: file.file.name, url: fileUrl })
-      useEmitt().emitter.emit('calcData-' + element.value.id)
+    // 增加总任务数
+    totalUploads++
+
+    uploadFileResult(file.file, (fileUrl, error) => {
+      if (error) {
+        // 上传失败
+        console.error('上传失败:', error)
+      } else {
+        // 上传成功
+        snapshotStore.recordSnapshotCache('pic-upload')
+        element.value.propValue.urlList.unshift({ name: file.file.name, url: fileUrl })
+        useEmitt().emitter.emit('calcData-' + element.value.id)
+      }
+
+      // 无论成功失败，都增加完成计数
+      uploadCount++
+
+      // 检查是否所有上传都完成了
+      if (uploadCount === totalUploads) {
+        // 所有图片上传完成，刷新列表
+        nextTick(() => {
+          fileListInit()
+          // 重置计数器
+          uploadCount = 0
+          totalUploads = 0
+        })
+      }
     })
   }
 }
@@ -121,7 +147,7 @@ onBeforeUnmount(() => {
           accept=".jpeg,.jpg,.png,.gif,.svg"
           class="avatar-uploader"
           list-type="picture-card"
-          :class="{ disabled: uploadDisabled }"
+          :class="{ disabled: uploadDisabled || element.propValue.urlList.length >= 10 }"
           :on-preview="handlePictureCardPreview"
           :on-remove="handleRemove"
           :before-upload="beforeUploadCheck"
@@ -154,13 +180,13 @@ onBeforeUnmount(() => {
           @change="onStyleChange"
           :effect="themes"
         >
-          <el-radio label="adaptation" :effect="themes">{{
+          <el-radio value="adaptation" :effect="themes">{{
             t('visualization.pic_adaptation')
           }}</el-radio>
-          <el-radio label="original" :effect="themes">{{
+          <el-radio value="original" :effect="themes">{{
             t('visualization.pic_original')
           }}</el-radio>
-          <el-radio label="equiratio" :effect="themes">{{
+          <el-radio value="equiratio" :effect="themes">{{
             t('visualization.pic_equiratio')
           }}</el-radio>
         </el-radio-group>
@@ -195,7 +221,7 @@ onBeforeUnmount(() => {
   }
 }
 
-.disabled :deep(.el-upload--picture-card) {
+.disabled :deep(.ed-upload) {
   display: none;
 }
 
@@ -213,7 +239,7 @@ onBeforeUnmount(() => {
 :deep(.ed-upload--picture-card) {
   background: #eff0f1;
   border: 1px dashed #dee0e3;
-  border-radius: 4px;
+  border-radius: 6px;
 
   .ed-icon {
     color: #1f2329;
@@ -294,7 +320,7 @@ onBeforeUnmount(() => {
     margin-top: 8px;
     background: #fff;
     height: 32px;
-    border-radius: 4px;
+    border-radius: 6px;
     border: 1px solid #dcdfe6;
     display: flex;
     color: #cccccc;
@@ -308,8 +334,8 @@ onBeforeUnmount(() => {
     }
 
     &.active {
-      color: #3370ff;
-      border-color: #3370ff;
+      color: var(--ed-color-primary, #3370ff);
+      border-color: var(--ed-color-primary, #3370ff);
     }
   }
 

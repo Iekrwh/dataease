@@ -60,7 +60,7 @@ getExampleValue()
     >
       <el-form-item :label="t('chart.value_formatter_type')">
         <el-radio-group v-model="formatterItem.formatterCfg.type" @change="getExampleValue">
-          <el-radio v-for="radio in state.typeList" :key="radio.value" :label="radio.value">{{
+          <el-radio v-for="radio in state.typeList" :key="radio.value" :value="radio.value">{{
             t('chart.' + radio.name)
           }}</el-radio>
         </el-radio-group>
@@ -117,6 +117,7 @@ getExampleValue()
         <el-input
           v-model="formatterItem.formatterCfg.suffix"
           clearable
+          maxlength="30"
           :placeholder="t('commons.input_content')"
           @change="getExampleValue"
         />

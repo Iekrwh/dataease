@@ -1,6 +1,9 @@
 export default {
   common: {
-    month_to_yesterday: 'From the beginning of the month to yesterday',
+    display_formats: 'Display Formats',
+    dropdown_display: 'Drop-down Display',
+    tile_display: 'Tile Display',
+    month_to_yesterday: 'From the beginning of the month to yesterday(current month)',
     to_this_month: 'From the beginning of the year to this month',
     up_to_options: 'Display up to 1000 options',
     next_week: 'Next week',
@@ -93,7 +96,8 @@ export default {
     filter: 'Filter',
     filter_condition: 'Filter condition',
     no_auth_tips: 'Missing menu permissions, please contact the administrator',
-    no_menu_tips: 'Resource not found 401 error'
+    no_menu_tips: 'Resource not found 401 error',
+    refresh_success: 'Refresh success'
   },
   toolbox: {
     name: 'Toolbox',
@@ -313,6 +317,8 @@ export default {
     time_function: 'Time function',
     customize: 'Customize',
     that_day: 'That day',
+    previous_day: 'Previous day',
+    timestamp: 'current time (timestamp)',
     value: 'Value',
     name_use_parameters: "You can use ${'{'}parameter name{'}'}, use parameters",
     add_parameters: 'Add parameters',
@@ -705,7 +711,13 @@ export default {
     delete_custom_area_tip:
       'This operation will cause the map using the custom area to fail to display normally, are you sure to delete?',
     please_select_area: 'Please select an area',
-    delete_custom_sub_area_tip: 'Are you sure you want to delete this custom area?'
+    delete_custom_sub_area_tip: 'Are you sure you want to delete this custom area?',
+    saml: {
+      title: 'SAML2 Settings',
+      request: 'Enable Request Signing',
+      assertion: 'Enable Assertion Signing'
+    },
+    country: 'Country'
   },
   components: {
     dashboard_style: 'Dashboard style',
@@ -725,9 +737,9 @@ export default {
     dashboard_configuration: 'Dashboard configuration',
     to_mobile_layout: 'Switch to mobile layout',
     complete: 'Complete',
-    pager_color: 'Pager color',
+    pager_color: 'Pager',
     title_horizontal_position: 'Title horizontal position',
-    title_display_position: 'Title display position',
+    title_display_position: 'Label display position',
     title_color: 'Title color',
     label_color: 'Label color',
     input_box_style: 'Input box style',
@@ -743,6 +755,9 @@ export default {
     to_delete_variable: 'Are you sure you want to delete {0}?'
   },
   user: {
+    my: 'My',
+    switch_organization: 'Switch Organization',
+    logout: 'Logout',
     change_password: 'Change Password',
     select_users: 'Please select a user',
     account: 'Account',
@@ -909,6 +924,7 @@ export default {
       user_source: 'Origin',
       user_label: 'User label',
       user_email: 'Email',
+      user_phone: 'Mobile phone',
       dept: 'Organization',
       role: 'Role'
     },
@@ -972,6 +988,7 @@ export default {
     config: 'Datasource configuration',
     table: 'Datasource table',
     table_name: 'Table name',
+    table_remarks: 'Table remarks',
     remark: 'Remark',
     column_name: 'Field name',
     field_type: 'Field type',
@@ -1073,6 +1090,13 @@ export default {
     all_compute_mode: 'Direct connection, extraction mode',
     extra_params: 'Additional JDBC connection string',
     jdbcUrl: 'JDBC connection',
+    ck_ssl_ca: 'SSL CA Certificate',
+    ck_ssl_client_cert: 'SSL Client Certificate',
+    ck_ssl_client_key: 'SSL Client Private Key',
+    ck_ssl_upload: 'Upload Certificate',
+    ck_ssl_upload_hint: 'Supports .pem/.crt/.cer/.key; content will be auto-filled after upload',
+    ck_ssl_pem_placeholder: 'Enter or upload PEM content',
+    ck_ssl_read_failed: 'Failed to read SSL certificate file',
     please_input_dataPath: 'Please enter the JsonPath data path',
     show_api_data: 'View API data structure',
     warning: 'Invalid data table included',
@@ -1156,6 +1180,9 @@ export default {
     simple_cron: 'Simple repetition',
     manual: 'Manual update',
     cron_config: 'Expression setting',
+    preview_next_exec_times: 'Execution times preview',
+    next_five_exec_times: 'Next five execution times',
+    no_next_exec_time: 'No execution time available',
     no_limit: 'Unlimited',
     set_end_time: 'Set end time',
     exec_time: 'Execution time',
@@ -1186,6 +1213,10 @@ export default {
     load_data: 'Load Data'
   },
   chart: {
+    self: 'Self',
+    total_row: 'Entire Row',
+    custom: 'Custom',
+    apply_to: 'Apply To',
     align: 'Alignment',
     reset: 'Reset',
     chart_refresh_tips: 'Chart refresh settings take precedence over dashboard refresh settings',
@@ -1395,6 +1426,8 @@ export default {
     filter_empty: 'Empty string',
     filter_not_empty: 'Not empty string',
     filter_include: 'Include',
+    filter_start_with: 'Start with',
+    filter_end_with: 'End with',
     filter_not_include: 'Not included',
     rose_type: 'Rose diagram mode',
     radius_mode: 'Radius',
@@ -1429,6 +1462,7 @@ export default {
     table_col_freeze_tip: 'First n col',
     table_row_freeze_tip: 'First n row',
     table_freeze: 'Freeze',
+    table_empty_font_color: 'No data tip',
     stripe: 'Zebra stripe',
     start_angle: 'Starting angle',
     end_angle: 'Ending angle',
@@ -1579,6 +1613,7 @@ export default {
     chart_scatter_bubble: 'Bubble chart',
     chart_scatter: 'Scatter chart',
     bubble_size: 'Bubble size',
+    lightness: 'Lightness',
     chart_treemap: 'Rectangular treemap',
     drill: 'Drill',
     drag_block_treemap_label: 'Block label',
@@ -1705,6 +1740,11 @@ export default {
     table_column_adapt: 'Adaptive',
     table_column_fixed: 'Fixed column width',
     table_column_custom: 'Custom',
+    table_column_col_adapt: 'Column adaptive',
+    table_row_header_width: 'Table Row Header Width',
+    table_row_header_adapt: 'Adaptive',
+    table_row_header_fixed: 'Fixed',
+    table_row_header_percent: 'Percent',
     chart_table_pivot: 'Pivot table',
     chart_table_heatmap: 'Heat map',
     table_pivot_row: 'Data row',
@@ -1821,6 +1861,9 @@ export default {
     dimension_text_style: 'Name style',
     dimension_letter_space: 'Name letter spacing',
     name_value_spacing: 'Name/value spacing',
+    name_position: 'Position',
+    name_position_top: 'Top',
+    name_position_bottom: 'Bottom',
     font_family: 'Font',
     letter_space: 'Letter spacing',
     font_shadow: 'Font shadow',
@@ -2117,7 +2160,13 @@ export default {
     table_field_total_label: 'Field Alias',
     table_row_header_freeze: 'Row Header Freeze',
     value_formatter_total_out_percent: 'Show percentage',
-    enable_slider_tip: 'After enabling the slider, the carousel prompt will be disabled.'
+    enable_slider_tip: 'After enabling the slider, the carousel prompt will be disabled.',
+    liquid_show_border: 'Show Border',
+    liquid_border_width: 'Border Width',
+    liquid_border_distance: 'Border Distance',
+    top_n_label_tip:
+      'Do not duplicate the data value of the sector label field, otherwise it will cause display abnormalities.',
+    used_global_map_mapping: 'Use global place mapping'
   },
   dataset: {
     field_value: 'Field Value',
@@ -2495,7 +2544,9 @@ export default {
     serial_no: 'Serial number',
     remark: 'Remark',
     back_community: 'Revert to Community Edition',
-    confirm_tips: 'Are you sure you want to restore to the community edition? '
+    confirm_tips: 'Are you sure you want to restore to the community edition? ',
+    set_of: '',
+    count_of: 'account'
   },
   cron: {
     second: 'Seconds',
@@ -2836,6 +2887,7 @@ export default {
     last_3_days: 'Last 3 days',
     month_to_date: 'Month to date',
     year_to_date: 'Year to date',
+    year_to_last_month_end: 'Year to end of last month',
     exact_match: 'Exact',
     fuzzy_match: 'Fuzzy',
     option_type: 'Option type',
@@ -2853,7 +2905,7 @@ export default {
     must_be_met:
       "Based on  the current component's condition, if cascade configuration is required, the following conditions must be met:",
     select_data_set:
-      '1. Display type: text and number drop-down component; 2. Option value source: select Dataset',
+      '1. Display type: Text dropdown component and numeric dropdown component, dropdown tree; 2. Source of option values: Selection dataset',
     add_cascade_configuration: 'Add cascade configuration',
     add_cascade_condition: 'Add cascade condition',
     query_condition_level: 'Level',
@@ -2930,6 +2982,19 @@ export default {
     column_name: 'Field name'
   },
   visualization: {
+    hover_button_tips: 'Display chart action buttons',
+    preview_effect: 'Takes effect in preview mode',
+    img_can_not_null: 'Image cannot be empty',
+    outer_params_type_tips1:
+      "When the type is 'filter', it only applies to text dropdown, text tree, and number dropdown. For text tree filtering format, separate multiple levels with '-de-'",
+    outer_params_type_tips2:
+      '["Level1","Level1-de-Level2_1","Level2-de-Level2_1","Level1-de-Level2_1-de-Level3_1","Level2"]',
+    outer_params_type: 'Type',
+    outer_params_type_self: 'Assignment',
+    outer_params_type_filter: 'Filter',
+    number_formatter: 'Number Content Format',
+    jump_dialog_background: 'Dialog Background Color',
+    jump_dialog_button: 'Dialog Font Color',
     sqlbot_query_tips: 'Smart Data Query',
     cur_sq_dataset: 'Currently selected dataset:',
     data_match_type: 'Data match type',
@@ -3322,6 +3387,9 @@ export default {
     panel_background: 'Dashboard Background',
     component_color: 'Component Color',
     chart_title: 'Chart Title',
+    chart_label: 'Chart Label',
+    chart_tooltip: 'Chart Tooltip',
+    chart_tooltip_bg_color: 'Background Color',
     filter_component: 'Query',
     enable_refresh_view: 'Enable Refresh',
     enable_view_loading: 'Chart Loading Prompt',
@@ -3812,6 +3880,7 @@ export default {
     frontTimeOut: 'Request timeout (seconds)',
     logLiveTime: 'Operation log retention time (days)',
     thresholdLogLiveTime: 'Threshold alarm record retention time (days)',
+    dataFillingLogLiveTime: 'DataFilling operation log retention time (days)',
     exportFileLiveTime: 'Background export file retention time (days)',
     platformOid: 'Third-party platform user organization',
     platformRid: 'Third-party platform user role',
@@ -3823,10 +3892,14 @@ export default {
     sharePeRequire: 'Sharing validity period password required',
     defaultSort: 'Default resource sorting method',
     defaultOpen: 'Page opening method',
+    embeddedExportMode: 'Embedded data export mode',
+    exportModeSync: 'Synchronous',
+    exportModeAsync: 'Asynchronous',
     loginLimit: 'Limit login',
     loginLimitRate: 'Limit login failure times (times)',
     loginLimitTime: 'Limit login failure time (minutes)',
-    share_disable_tips: 'Dashboard and data screen sharing are invalid after turning on'
+    share_disable_tips: 'Dashboard and data screen sharing are invalid after turning on',
+    thresholdLimit: 'Alarm data limitation'
   },
   resource_sort: {
     time_asc: 'In ascending order by creation time',
@@ -3976,7 +4049,7 @@ export default {
     description: 'Description',
     tips: 'Tips',
     replication: 'BACKEND Replicas',
-    replication_tip: 'Number of BE Nodes'
+    replication_tip: 'Defaults to 1 when empty'
   },
   sync_summary: {
     summary: 'Overview',
@@ -4223,6 +4296,11 @@ export default {
     instance_title: 'Task log',
     add_task: 'Add task',
     lark_groups: 'Lark group',
+    dingtalk_groups: ' Dingtalk group',
+    dingtalk_groups_tips: 'Create an application robot first and add it to the group',
+    robot_code_place: 'Defaults to the same as APP Key',
+    click_add_chat: 'Please click the button below to add a group chat',
+    add_chat_tips: 'Only supports admin-associated accounts using the client',
     larksuite_groups: 'Larksuite group',
     send_setting: 'Send settings',
     retrying_settings: 'Send failed retry settings',
@@ -4418,6 +4496,9 @@ export default {
       bind_complete: 'Already bound',
       option_value: 'Option value',
       add_option: 'Add option value',
+      msg_title: 'You Have a New Data Reporting Task',
+      msg_content_1: 'You have a new data reporting task: ',
+      msg_content_2: ', please complete the reporting promptly',
       form_name_cannot_none: 'Form name cannot be empty',
       form_update_rule_none: 'Please configure update rules',
       form_components_cannot_null: 'Please add form components',
@@ -4602,6 +4683,7 @@ export default {
     notification_user: 'Notifier',
     notification_email: 'Email notification',
     please_enter_email: 'Please enter email, press Enter to confirm',
+    please_choose_dingtalk_group: 'Please select dingtalk group',
     please_choose_lark_group: 'Please select lark group',
     notification_content: 'Notification content',
     default_msg: 'Default message',
@@ -4609,6 +4691,7 @@ export default {
     msg_title: 'Message title',
     msg_content: 'Message content',
     repeat_send: 'Repeat send',
+    show_field_value: 'Show field value',
     recipient: 'Recipient',
     choose_recipient: 'Select recipient',
     trigger_alarm: 'Trigger alarm',
@@ -4618,6 +4701,7 @@ export default {
     recipient_setting: 'Recipient setting',
     attention_quota_tip: 'The indicators you are following',
     pay_attention_in_time: '. Please pay attention in time.',
+    threshold_record: 'Alert Data',
     msg_preview: 'Message preview',
     average: 'Average value',
     next_time: 'Next ',
@@ -4690,7 +4774,8 @@ export default {
       'After binding, you can log in by scanning the QR code through International Lark',
     bind: 'Bind',
     unbind_success: 'Unbind successfully',
-    confirm_unbind_dingtalk: 'Are you sure you want to unbind DingTalk? ',
+    confirm_unbind_dingtalk: 'Are you sure you want to unbind {0}? ',
+    unbind_error: 'Current user origin is {0}, cannot unbind',
     pls_use: 'Please use ',
     bind_use_qr: 'Scan QR code to bind',
     pls_use_dingtalk: 'Please use DingTalk to scan QR code to log in',
@@ -4750,6 +4835,14 @@ export default {
   security: {
     title: 'Security Settings'
   },
+  setting_hmac: {
+    title: 'HMAC Settings',
+    enable: 'Enable HMAC Authentication',
+    clock_skew: 'Clock skew',
+    clock_skew_tips:
+      'Unit: seconds, default is 300, which allows a time difference of up to 5 minutes between the request time and server time',
+    clock_skew_range: 'Clock skew range is 1-{0} seconds'
+  },
   setting_mfa: {
     title: 'MFA Settings',
     status: 'Global MFA Authentication Enabled',
@@ -4801,5 +4894,23 @@ export default {
     content_type: 'Content Type',
     del_confirm: 'Are you sure you want to delete this Webhook?',
     batch_del_confirm: 'Are you sure you want to delete {0} Webhooks?'
+  },
+  element_plus: {
+    el: {
+      pagination: {
+        goto: 'Go to',
+        pagesize: '/page',
+        total: 'Total {total}',
+        pageClassifier: '',
+        page: 'Page',
+        prev: 'Go to previous page',
+        next: 'Go to next page',
+        currentPage: 'page {pager}',
+        prevPages: 'Previous {pager} pages',
+        nextPages: 'Next {pager} pages',
+        deprecationWarning:
+          'Deprecated usages detected, please refer to the el-pagination documentation for more details'
+      }
+    }
   }
 }

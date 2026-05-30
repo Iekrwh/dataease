@@ -11,7 +11,10 @@ import {
   getColumns,
   summaryRowStyle,
   calcTreeWidth,
-  getStartPosition
+  getStartPosition,
+  isNumeric,
+  CustomTableColCell,
+  reserveTableRightBorderWidth
 } from '@/views/chart/components/js/panel/common/common_table'
 import { S2ChartView, S2DrawOptions } from '@/views/chart/components/js/panel/types/impl/s2'
 import { parseJson } from '@/views/chart/components/js/util'
@@ -20,12 +23,13 @@ import {
   S2DataConfig,
   S2Event,
   S2Options,
+  S2Theme,
   ScrollbarPositionType,
   TableColCell,
   TableSheet,
   ViewMeta
 } from '@antv/s2'
-import { isNumber, isEqual } from 'lodash-es'
+import { isEqual, merge } from 'lodash-es'
 import { TABLE_EDITOR_PROPERTY, TABLE_EDITOR_PROPERTY_INNER } from './common'
 
 const { t } = useI18n()
@@ -69,6 +73,10 @@ export class TableNormal extends S2ChartView<TableSheet> {
 
   setupDefaultOptions(chart: ChartObj): ChartObj {
     chart.xAxis = []
+    const customAttr = parseJson(chart.customAttr)
+    if (customAttr.basicStyle.tableColumnMode === 'colAdapt') {
+      customAttr.basicStyle.tableColumnMode = 'adapt'
+    }
     return chart
   }
 
@@ -121,7 +129,7 @@ export class TableNormal extends S2ChartView<TableSheet> {
           if (value === null || value === undefined) {
             return value
           }
-          if (![2, 3, 4].includes(f.deType) || !isNumber(value)) {
+          if (![2, 3, 4].includes(f.deType) || !isNumeric(value)) {
             return value
           }
           let formatCfg = f.formatterCfg
@@ -179,7 +187,8 @@ export class TableNormal extends S2ChartView<TableSheet> {
         hoverHighlight: !(basicStyle.showHoverStyle === false),
         scrollbarPosition: newData.length
           ? ScrollbarPositionType.CONTENT
-          : ScrollbarPositionType.CANVAS
+          : ScrollbarPositionType.CANVAS,
+        hoverFocus: false
       }
     }
     // 列宽设置
@@ -208,6 +217,9 @@ export class TableNormal extends S2ChartView<TableSheet> {
       // header interaction
       chart.container = container
       this.configHeaderInteraction(chart, s2Options)
+      s2Options.colCell = (node, sheet, config) => {
+        return new CustomTableColCell(node, sheet, config)
+      }
     }
     // 配置总计和序号列
     this.configSummaryRowAndIndex(chart, pageInfo, s2Options, s2DataConfig)
@@ -242,12 +254,14 @@ export class TableNormal extends S2ChartView<TableSheet> {
               n.x = getStartPosition(n)
             }
           })
-          ev.colsHierarchy.width = totalWidth
+          ev.colsHierarchy.width = totalWidth + 1
           newChart.store.set('lastLayoutResult', undefined)
           return
         }
         const containerWidth = containerDom.getBoundingClientRect().width
-        const scale = containerWidth / ev.colsHierarchy.width
+        // 预留 1px 给最右侧边框，避免边框被裁剪
+        const availableWidth = containerWidth - 1
+        const scale = availableWidth / ev.colsHierarchy.width
         if (scale <= 1) {
           // 图库计算的布局宽度已经大于等于容器宽度，不需要再扩大，但是需要处理非整数宽度值，不然会出现透明细线
           ev.colLeafNodes.reduce((p, n) => {
@@ -255,6 +269,7 @@ export class TableNormal extends S2ChartView<TableSheet> {
             n.x = p
             return p + n.width
           }, 0)
+          ev.colsHierarchy.width = ev.colLeafNodes.reduce((p, n) => p + n.width, 0) + 1
           return
         }
         const totalWidth = ev.colLeafNodes.reduce((p, n) => {
@@ -269,11 +284,16 @@ export class TableNormal extends S2ChartView<TableSheet> {
             n.x = getStartPosition(n)
           }
         })
-        if (totalWidth > containerWidth) {
+        if (totalWidth > availableWidth) {
           // 从最后一列减掉
-          ev.colLeafNodes[ev.colLeafNodes.length - 1].width -= totalWidth - containerWidth
+          ev.colLeafNodes[ev.colLeafNodes.length - 1].width -= totalWidth - availableWidth
         }
         ev.colsHierarchy.width = containerWidth
+      })
+    }
+    if (basicStyle.tableColumnMode === 'field') {
+      newChart.on(S2Event.LAYOUT_AFTER_HEADER_LAYOUT, (ev: LayoutResult) => {
+        reserveTableRightBorderWidth(ev, containerDom.getBoundingClientRect().width)
       })
     }
     configEmptyDataStyle(newChart, basicStyle, newData, container)
@@ -324,6 +344,32 @@ export class TableNormal extends S2ChartView<TableSheet> {
     return newChart
   }
 
+  protected configTheme(chart: Chart): S2Theme {
+    const theme = super.configTheme(chart)
+    const { tableHeader, tableCell } = parseJson(chart.customAttr)
+    if (tableCell.tableItemAlign === 'custom') {
+      const { alignConfig } = tableCell
+      const alignMap = alignConfig.reduce((p, n) => {
+        p[n.id] = n.align
+        return p
+      }, {})
+      merge(theme, {
+        dataCellAlignConfig: alignMap
+      })
+    }
+    if (tableHeader.tableHeaderAlign === 'custom') {
+      const { alignConfig } = tableHeader
+      const alignMap = alignConfig.reduce((p, n) => {
+        p[n.id] = n.align
+        return p
+      }, {})
+      merge(theme, {
+        colCellAlignConfig: alignMap
+      })
+    }
+    return theme
+  }
+
   protected configSummaryRowAndIndex(
     chart: Chart,
     pageInfo: PageInfo,
@@ -354,7 +400,12 @@ export class TableNormal extends S2ChartView<TableSheet> {
       s2Options.style.rowCfg = { heightByField }
       // 计算汇总加入到数据里，冻结最后一行
       s2Options.frozenTrailingRowCount = 1
-      const summaryObj = getSummaryRow(data, yAxis, basicStyle.seriesSummary) as any
+      const summaryObj = getSummaryRow(
+        data,
+        yAxis,
+        basicStyle.seriesSummary,
+        chart.data.customSumResult
+      ) as any
       data.push(summaryObj)
     }
     s2Options.dataCell = viewMeta => {
@@ -363,6 +414,7 @@ export class TableNormal extends S2ChartView<TableSheet> {
         if (viewMeta.colIndex === 0) {
           if (tableHeader.showIndex || xAxis?.length) {
             viewMeta.fieldValue = summaryLabel ?? t('chart.total_show')
+            viewMeta.isSummaryLabel = true
           }
         }
         return new SummaryCell(viewMeta, viewMeta?.spreadsheet)

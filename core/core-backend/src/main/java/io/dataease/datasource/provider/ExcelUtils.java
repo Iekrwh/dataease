@@ -272,6 +272,7 @@ public class ExcelUtils {
 
     public ExcelFileData excelSaveAndParse(MultipartFile file, String createBy) throws DEException {
         String filename = file.getOriginalFilename();
+        FileUtils.validateUploadFilename(filename);
         List<ExcelSheetData> excelSheetDataList = null;
         try {
             excelSheetDataList = parseExcel(filename, file.getInputStream(), true, filename);
@@ -423,15 +424,15 @@ public class ExcelUtils {
 
     private static Map<String, String> downLoadRemoteExcel(ExcelConfiguration remoteExcelRequest) throws DEException, FileNotFoundException {
         Map<String, String> fileNames = new HashMap<>();
+        File p = new File(path);
+        if (!p.exists()) {
+            p.mkdirs();
+        }
         if (remoteExcelRequest.getUrl().trim().startsWith("http")) {
             HttpClientConfig httpClientConfig = new HttpClientConfig();
             if (StringUtils.isNotEmpty(remoteExcelRequest.getUserName()) && StringUtils.isNotEmpty(remoteExcelRequest.getPasswd())) {
                 String authValue = "Basic " + Base64.getUrlEncoder().encodeToString((remoteExcelRequest.getUserName() + ":" + remoteExcelRequest.getPasswd()).getBytes());
                 httpClientConfig.addHeader("Authorization", authValue);
-            }
-            File p = new File(path);
-            if (!p.exists()) {
-                p.mkdirs();
             }
             fileNames = HttpClientUtil.downloadFile(remoteExcelRequest.getUrl(), httpClientConfig, path);
         } else if (remoteExcelRequest.getUrl().trim().startsWith("ftp")) {
@@ -446,6 +447,7 @@ public class ExcelUtils {
         String filePath = null;
         try {
             String filename = file.getOriginalFilename();
+            FileUtils.validateUploadFilename(filename);
             String suffix = filename.substring(filename.lastIndexOf(".") + 1);
             File p = new File(path);
             if (!p.exists()) {

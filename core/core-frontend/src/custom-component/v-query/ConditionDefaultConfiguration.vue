@@ -229,6 +229,10 @@ const relativeToCurrentListRange = computed(() => {
         {
           label: t('common.to_this_month'),
           value: 'YearToThisMonth'
+        },
+        {
+          label: t('v_query.year_to_last_month_end'),
+          value: 'YearToLastMonthEnd'
         }
       ]
       break
@@ -248,6 +252,10 @@ const relativeToCurrentListRange = computed(() => {
           value: 'thisWeek'
         },
         {
+          label: t('cron.this_month'),
+          value: 'thisMonth'
+        },
+        {
           label: t('v_query.last_3_days'),
           value: 'LastThreeDays'
         },
@@ -258,6 +266,10 @@ const relativeToCurrentListRange = computed(() => {
         {
           label: t('v_query.year_to_date'),
           value: 'yearBeginning'
+        },
+        {
+          label: t('v_query.year_to_last_month_end'),
+          value: 'YearToLastMonthEnd'
         },
         {
           label: t('common.month_to_yesterday'),
@@ -527,8 +539,8 @@ defineExpose({
     >
       <div class="setting">
         <el-radio-group @change="handleTimeTypeChange" v-model="curComponent.timeType">
-          <el-radio label="fixed">{{ t('dynamic_time.fix') }}</el-radio>
-          <el-radio label="dynamic">{{ t('dynamic_time.dynamic') }}</el-radio>
+          <el-radio value="fixed">{{ t('dynamic_time.fix') }}</el-radio>
+          <el-radio value="dynamic">{{ t('dynamic_time.dynamic') }}</el-radio>
         </el-radio-group>
       </div>
       <template v-if="dynamicTime && curComponent.displayType === '1'">

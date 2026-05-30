@@ -8,6 +8,7 @@ import {
 import { dvMainStoreWithOut } from '@/store/modules/data-visualization/dvMain'
 import { useEmitt } from '@/hooks/web/useEmitt'
 import { defaultTo, merge } from 'lodash-es'
+import { formatterViewInfo } from '@/views/chart/components/js/formatter'
 const dvMainStore = dvMainStoreWithOut()
 
 export const LIGHT_THEME_COLOR_MAIN = '#000000'
@@ -120,7 +121,8 @@ export const customAttrTrans = {
     'lineSymbolSize',
     'leftLineWidth',
     'leftLineSymbolSize',
-    'tableColumnWidth'
+    'tableColumnWidth',
+    'tableRowHeaderWidth'
   ],
   tableHeader: [
     'tableTitleFontSize',
@@ -451,6 +453,41 @@ export function adaptCurTheme(customStyle, customAttr) {
     remarkShow: customStyle['text']['remarkShow'],
     remark: customStyle['text']['remark']
   }
+  const chartColor = canvasStyle.component.chartColor
+  if (chartColor) {
+    const labelSetting = chartColor.label
+    if (labelSetting) {
+      const label = customAttr.label
+      if (label) {
+        label.color = labelSetting.color
+        label.fontSize = labelSetting.fontSize
+      }
+      const labelFormatter = customAttr.label?.seriesLabelFormatter
+      if (labelFormatter && Array.isArray(labelFormatter)) {
+        labelFormatter.forEach(item => {
+          item.color = labelSetting.color
+          item.fontSize = labelSetting.fontSize
+        })
+      }
+    }
+    const tooltipSetting = chartColor.tooltip
+    if (tooltipSetting) {
+      const tooltip = customAttr.tooltip
+      if (tooltip) {
+        tooltip.color = tooltipSetting.color
+        tooltip.fontSize = tooltipSetting.fontSize
+        tooltip.backgroundColor = tooltipSetting.backgroundColor
+      }
+      const tooltipFormatter = customAttr.tooltip?.seriesTooltipFormatter
+      if (tooltipFormatter && Array.isArray(tooltipFormatter)) {
+        tooltipFormatter.forEach(item => {
+          item.color = tooltipSetting.color
+          item.fontSize = tooltipSetting.fontSize
+          item.backgroundColor = tooltipSetting.backgroundColor
+        })
+      }
+    }
+  }
 }
 
 export function adaptTitleFontFamily(fontFamily, viewInfo) {
@@ -536,6 +573,7 @@ export function adaptCurThemeCommonStyle(component) {
     // 图表-Begin
     const curViewInfo = dvMainStore.canvasViewInfo[component.id]
     adaptCurTheme(curViewInfo.customStyle, curViewInfo.customAttr)
+    formatterViewInfo(curViewInfo, dvMainStore.canvasStyleData.component.formatterItem)
     useEmitt().emitter.emit('renderChart-' + component.id, curViewInfo)
     // 图表-Begin
   } else if (component.component === 'Group') {

@@ -35,11 +35,14 @@ import {
   S2Event,
   S2Options,
   S2Theme,
+  type LayoutResult,
   SERIES_NUMBER_FIELD,
+  EXTRA_FIELD,
   setTooltipContainerStyle,
   SHAPE_STYLE_MAP,
   SpreadSheet,
   Style,
+  CellBorderPosition,
   TableColCell,
   TableDataCell,
   updateShapeAttr,
@@ -53,13 +56,9 @@ import {
   keys,
   map,
   maxBy,
-  meanBy,
   merge,
   minBy,
   repeat,
-  sumBy,
-  size,
-  sum,
   isNumber
 } from 'lodash-es'
 import { createVNode, render } from 'vue'
@@ -567,6 +566,81 @@ export function getStyle(chart: Chart, dataConfig: S2DataConfig): Style {
         style.colCfg.width = basicStyle.tableColumnWidth
         break
       }
+      case 'colAdapt': {
+        style.layoutWidthType = 'colAdaptive'
+        const parentNodeWidthMap = {}
+        const nodeMaxWidthMap = {}
+        const quotaLabelMap = chart.yAxis?.reduce((p, n) => {
+          p[n.dataeaseName] = n.chartShowName || n.name
+          return p
+        }, {}) || {}
+        let calcCount = 50
+        //只计算最后两层表头的宽度，采样 50 个数据
+        style.colCfg.width = node => {
+          const spreadsheet = node.spreadsheet
+          const colHeaderTheme = spreadsheet.theme.colCell.bolderText
+          const padding = spreadsheet.theme.colCell.cell.padding
+          const paddingWidth = (padding?.left || 8) + (padding?.right || 8) + 12
+          // 小计总计和第一层表头直接根据文本计算宽度
+          if (node.isTotals || node.parent.id === 'root') {
+            let label = node.label
+            if (node.key === EXTRA_FIELD) {
+              label = quotaLabelMap[node.label] || label
+            }
+            const totalsWidth = spreadsheet.measureTextWidth(label, colHeaderTheme) + paddingWidth
+            return totalsWidth
+          }
+
+          const parentWidth = parentNodeWidthMap[node.parent.id]
+          if (!parentWidth || (parentWidth && calcCount < 50)) {
+            const parentLabel = node.parent.label
+            const parentTextWidth = spreadsheet.measureTextWidth(parentLabel, colHeaderTheme) + paddingWidth
+            parentNodeWidthMap[node.parent.id] = parentTextWidth
+            const siblings = node.parent.children
+            const siblingsTextWidthMap = {}
+            const siblingsWidth = siblings.reduce((p, n) => {
+              let label = n.label
+              if (n.key === EXTRA_FIELD) {
+                label = quotaLabelMap[n.label] || label
+              }
+              const pureTextWidth = spreadsheet.measureTextWidth(label, colHeaderTheme)
+              if (n.key === EXTRA_FIELD) {
+                siblingsTextWidthMap[n.label] = pureTextWidth
+              }
+              calcCount++
+              return p + pureTextWidth + paddingWidth
+            }, 0)
+            if (siblingsWidth < parentTextWidth) {
+              const offsetWidth = parentTextWidth - siblingsWidth
+              const expandOffsetWidth = offsetWidth / Object.keys(siblingsTextWidthMap).length
+              for (const key in siblingsTextWidthMap) {
+                const tmpWidth = siblingsTextWidthMap[key] + Math.ceil(expandOffsetWidth) + paddingWidth
+                const maxWidth = nodeMaxWidthMap[key]
+                if (!maxWidth || (maxWidth && tmpWidth > maxWidth)) {
+                  nodeMaxWidthMap[key] = tmpWidth
+                }
+              }
+            } else {
+              for (const key in siblingsTextWidthMap) {
+                const tmpWidth = siblingsTextWidthMap[key] + paddingWidth
+                const maxWidth = nodeMaxWidthMap[key]
+                if (!maxWidth || (maxWidth && tmpWidth > maxWidth)) {
+                  nodeMaxWidthMap[key] = tmpWidth
+                }
+              }
+            }
+            return nodeMaxWidthMap[node.label]
+          } else {
+            const fieldWidth = nodeMaxWidthMap[node.label]
+            if (fieldWidth) {
+              return fieldWidth
+            }
+            const textWidth = spreadsheet.measureTextWidth(node.label, colHeaderTheme) + paddingWidth
+            return textWidth
+          }
+        }
+        break
+      }
       // 查看详情用，均分铺满
       default: {
         delete style.layoutWidthType
@@ -585,6 +659,22 @@ export function getStyle(chart: Chart, dataConfig: S2DataConfig): Style {
   }
 
   return style
+}
+
+export function reserveTableRightBorderWidth(ev: LayoutResult, containerWidth: number) {
+  if (!ev.colLeafNodes?.length) {
+    return
+  }
+  const totalWidth = ev.colLeafNodes.reduce((p, n) => p + n.width, 0)
+  if (totalWidth < containerWidth) {
+    return
+  }
+  const lastLeafNode = ev.colLeafNodes[ev.colLeafNodes.length - 1]
+  if (lastLeafNode.width <= 1) {
+    return
+  }
+  lastLeafNode.width -= 1
+  ev.colsHierarchy.width = totalWidth
 }
 
 export function getCurrentField(valueFieldList: Axis[], field: ChartViewField) {
@@ -619,7 +709,16 @@ export function getConditions(chart: Chart) {
   }
   const conditions = threshold.tableThreshold ?? []
 
-  const dimFields = [...chart.xAxis, ...chart.xAxisExt].map(i => i.dataeaseName)
+  const allFields = [...chart.xAxis]
+  if (chart.type === 'table-normal') {
+    allFields.push(...chart.yAxis)
+  }
+  const fieldIdToName = allFields.reduce((acc, f) => {
+    acc[f.id] = f.dataeaseName
+    return acc
+  }, {})
+  const allColumnNames = allFields.map(f => f.dataeaseName)
+
   if (conditions?.length > 0) {
     const { tableCell, basicStyle, tableHeader } = parseJson(chart.customAttr)
     // 合并单元格时斑马纹失效
@@ -635,49 +734,69 @@ export function getConditions(chart: Chart) {
       : isAlphaColor(tableCell.tableItemBgColor)
       ? tableCell.tableItemBgColor
       : hexColorToRGBA(tableCell.tableItemBgColor, basicStyle.alpha)
-    const headerValueColor = tableHeader.tableHeaderFontColor
-    const headerValueBgColor = isAlphaColor(tableHeader.tableHeaderBgColor)
-      ? tableHeader.tableHeaderBgColor
-      : hexColorToRGBA(tableHeader.tableHeaderBgColor, basicStyle.alpha)
     const filedValueMap = getFieldValueMap(chart)
+
+    const targetRulesMap = {} // columnName -> Array<{ rule, sourceField }>
+
     for (let i = 0; i < conditions.length; i++) {
-      const field = conditions[i]
-      let defaultValueColor = valueColor
-      let defaultBgColor = valueBgColor
-      // 透视表表头颜色配置
-      if (chart.type === 'table-pivot' && dimFields.includes(field.field.dataeaseName)) {
-        defaultValueColor = headerValueColor
-        defaultBgColor = headerValueBgColor
+      const fieldItem = conditions[i]
+      if (!fieldItem.conditions) continue;
+
+      for (let j = 0; j < fieldItem.conditions.length; j++) {
+        const rule = fieldItem.conditions[j]
+        let targets = []
+        if (rule.target === 'total_row') {
+          targets = [...allColumnNames]
+          // 明细表和汇总表需要包含序号列
+          if (tableHeader.showIndex) {
+            targets.push(SERIES_NUMBER_FIELD)
+          }
+        } else if (rule.target === 'custom' && rule.targetFieldId) {
+          const targetName = fieldIdToName[rule.targetFieldId]
+          if (targetName) targets = [targetName]
+        } else {
+          targets = [fieldItem.field.dataeaseName]
+        }
+
+        targets.forEach(targetName => {
+          if (!targetRulesMap[targetName]) {
+            targetRulesMap[targetName] = []
+          }
+          targetRulesMap[targetName].push({
+            rule: rule,
+            sourceField: fieldItem.field
+          })
+        })
       }
+    }
+
+    for (const targetName in targetRulesMap) {
+      const rules = targetRulesMap[targetName]
+      const defaultValueColor = valueColor
+      const defaultBgColor = valueBgColor
+
       res.text.push({
-        field: field.field.dataeaseName,
+        field: targetName,
         mapping(value, rowData) {
-          // 总计小计
-          if (rowData?.isTotals) {
+          if (!value && !rowData) {
             return null
           }
-          // 表头
-          if (rowData?.id && rowData?.field === rowData.id) {
-            return null
-          }
+
           return {
-            fill: mappingColor(value, defaultValueColor, field, 'color', filedValueMap, rowData)
+            fill: mappingColor(value, defaultValueColor, rules, 'color', filedValueMap, rowData)
           }
         }
       })
       res.background.push({
-        field: field.field.dataeaseName,
+        field: targetName,
         mapping(value, rowData) {
-          if (rowData?.isTotals) {
-            return null
-          }
-          if (rowData?.id && rowData?.field === rowData.id) {
+          if (!value && !rowData) {
             return null
           }
           const fill = mappingColor(
             value,
             defaultBgColor,
-            field,
+            rules,
             'backgroundColor',
             filedValueMap,
             rowData
@@ -693,8 +812,9 @@ export function getConditions(chart: Chart) {
   return res
 }
 
-export function mappingColor(value, defaultColor, field, type, filedValueMap?, rowData?) {
+export function mappingColorCustom(value, defaultColor, field, type, filedValueMap?, rowData?) {
   let color = null
+  let hitCondition = null;
   for (let i = 0; i < field.conditions.length; i++) {
     let flag = false
     const t = field.conditions[i]
@@ -737,25 +857,36 @@ export function mappingColor(value, defaultColor, field, type, filedValueMap?, r
           flag = true
         }
       } else if (t.term === 'le') {
-        if (value <= tv) {
+        if (value !== null && value <= tv) {
           color = t[type]
           flag = true
         }
       } else if (t.term === 'ge') {
-        if (value >= tv) {
+        if (value !== null && value >= tv) {
           color = t[type]
           flag = true
         }
       } else if (t.term === 'between') {
-        if (min <= value && value <= max) {
+        if (value !== null && min <= value && value <= max) {
           color = t[type]
           flag = true
         }
       } else if (t.term === 'default') {
         color = t[type]
         flag = true
+      } else if (t.term === 'null') {
+        if (value === null || value === undefined || value === '') {
+          color = t[type]
+          flag = true
+        }
+      } else if (t.term === 'not_null') {
+        if (value !== null && value !== undefined && value !== '') {
+          color = t[type]
+          flag = true
+        }
       }
       if (flag) {
+        hitCondition = t
         break
       } else if (i === field.conditions.length - 1) {
         color = defaultColor
@@ -796,16 +927,32 @@ export function mappingColor(value, defaultColor, field, type, filedValueMap?, r
         flag = true
       }
       if (flag) {
+        hitCondition = t
         break
       } else if (i === field.conditions.length - 1) {
         color = defaultColor
       }
     } else {
+      const fc = field.conditions[i]
+      if (fc.term === 'null') {
+        if (value === null && value === undefined && value === '') {
+          color = fc[type]
+          flag = true
+        }
+      } else if (fc.term === 'not_null') {
+        if (value !== null && value !== undefined && value !== '') {
+          color = fc[type]
+          flag = true
+        }
+      }
+      if (flag) {
+        hitCondition = fc
+        break
+      }
       // time
       if (!tv || !value) {
         break
       }
-      const fc = field.conditions[i]
       tv = new Date(tv.replace(/-/g, '/') + ' GMT+8').getTime()
       const v = new Date(value.replace(/-/g, '/') + ' GMT+8').getTime()
       if (fc.term === 'eq') {
@@ -843,11 +990,608 @@ export function mappingColor(value, defaultColor, field, type, filedValueMap?, r
         flag = true
       }
       if (flag) {
+        hitCondition = fc
         break
       } else if (i === field.conditions.length - 1) {
         color = defaultColor
       }
     }
+  }
+  if(hitCondition && hitCondition.target === 'custom'){
+    return {
+      targetFieldId: hitCondition.targetFieldId,
+      color
+    }
+  }else{
+    return {
+      targetFieldId: field.fieldId,
+      color
+    }
+  }
+
+}
+
+export function mappingColor(value, defaultColor, rules, type, filedValueMap?, rowData?) {
+  let color = null
+
+  for (let i = 0; i < rules.length; i++) {
+    const { rule, sourceField } = rules[i]
+    let flag = false
+    const t = rule
+    let targetValue, max, min
+
+    let checkValue = value;
+    if (sourceField.dataeaseName) {
+      checkValue = rowData?.[sourceField.dataeaseName]
+      if (checkValue === undefined) {
+        checkValue = rowData?.query?.[sourceField.dataeaseName]
+      }
+    }
+
+    if (t.type === 'dynamic') {
+      if (t.term === 'between') {
+        max = parseFloat(getValue(t.dynamicMaxField, filedValueMap, rowData))
+        min = parseFloat(getValue(t.dynamicMinField, filedValueMap, rowData))
+      } else {
+        targetValue = getValue(t.dynamicField, filedValueMap, rowData)
+      }
+    } else {
+      if (t.term === 'between') {
+        min = parseFloat(t.min)
+        max = parseFloat(t.max)
+      } else {
+        targetValue = t.value
+      }
+    }
+
+    const val = checkValue;
+
+    if (sourceField.deType === 2 || sourceField.deType === 3 || sourceField.deType === 4) {
+      targetValue = parseFloat(targetValue)
+      const numVal = parseFloat(val)
+      if (t.term === 'eq') {
+        if (numVal === targetValue) {
+          color = t[type]
+          flag = true
+        }
+      } else if (t.term === 'not_eq') {
+        if (numVal !== targetValue) {
+          color = t[type]
+          flag = true
+        }
+      } else if (t.term === 'lt') {
+        if (numVal < targetValue) {
+          color = t[type]
+          flag = true
+        }
+      } else if (t.term === 'gt') {
+        if (numVal > targetValue) {
+          color = t[type]
+          flag = true
+        }
+      } else if (t.term === 'le') {
+        if (val !== null && numVal <= targetValue) {
+          color = t[type]
+          flag = true
+        }
+      } else if (t.term === 'ge') {
+        if (val !== null && numVal >= targetValue) {
+          color = t[type]
+          flag = true
+        }
+      } else if (t.term === 'between') {
+        if (val !== null && min <= numVal && numVal <= max) {
+          color = t[type]
+          flag = true
+        }
+      } else if (t.term === 'default') {
+        color = t[type]
+        flag = true
+      } else if (t.term === 'null') {
+        if (val === null || val === undefined || val === '') {
+          color = t[type]
+          flag = true
+        }
+      } else if (t.term === 'not_null') {
+        if (val !== null && val !== undefined && val !== '') {
+          color = t[type]
+          flag = true
+        }
+      }
+      if (flag) {
+        break
+      }
+    } else if (sourceField.deType === 0 || sourceField.deType === 5) {
+      if (t.term === 'eq') {
+        if (val === targetValue) {
+          color = t[type]
+          flag = true
+        }
+      } else if (t.term === 'not_eq') {
+        if (val !== targetValue) {
+          color = t[type]
+          flag = true
+        }
+      } else if (t.term === 'like') {
+        if (val && val.includes(targetValue)) {
+          color = t[type]
+          flag = true
+        }
+      } else if (t.term === 'not like') {
+        if (val && !val.includes(targetValue)) {
+          color = t[type]
+          flag = true
+        }
+      } else if (t.term === 'null') {
+        if (val === null || val === undefined || val === '') {
+          color = t[type]
+          flag = true
+        }
+      } else if (t.term === 'not_null') {
+        if (val !== null && val !== undefined && val !== '') {
+          color = t[type]
+          flag = true
+        }
+      } else if (t.term === 'default') {
+        color = t[type]
+        flag = true
+      }
+      if (flag) {
+        break
+      }
+    } else {
+      const fc = rule
+      if (fc.term === 'null') {
+        if (val === null || val === undefined || val === '') {
+          color = fc[type]
+          flag = true
+        }
+      } else if (fc.term === 'not_null') {
+        if (val !== null && val !== undefined && val !== '') {
+          color = fc[type]
+          flag = true
+        }
+      }
+      if (flag) {
+        break
+      }
+      // time
+      if (!targetValue || !val) {
+        break
+      } else {
+          // 特殊时间格式不转换, 包含时或者包含时、分时(不包含秒), 直接比较字符串，因为new Date转换会有误差
+          const isSpecialTimeFormat = (dateStyle?: string) =>
+            dateStyle === 'H_m_s' || (dateStyle && dateStyle.length > 5 && dateStyle.length < 11)
+
+          let v: number | string
+          let compareTv = targetValue;
+          if (isSpecialTimeFormat(sourceField?.dateStyle)) {
+            v = val
+          } else {
+            v = new Date(val.replace(/-/g, '/') + ' GMT+8').getTime()
+            compareTv = new Date(targetValue.toString().replace(/-/g, '/') + ' GMT+8').getTime()
+          }
+          if (fc.term === 'eq') {
+            if (v === compareTv) {
+              color = fc[type]
+              flag = true
+            }
+          } else if (fc.term === 'not_eq') {
+            if (v !== compareTv) {
+              color = fc[type]
+              flag = true
+            }
+          } else if (fc.term === 'lt') {
+            if (v < compareTv) {
+              color = fc[type]
+              flag = true
+            }
+          } else if (fc.term === 'gt') {
+            if (v > compareTv) {
+              color = fc[type]
+              flag = true
+            }
+          } else if (fc.term === 'le') {
+            if (v <= compareTv) {
+              color = fc[type]
+              flag = true
+            }
+          } else if (fc.term === 'ge') {
+            if (v >= compareTv) {
+              color = fc[type]
+              flag = true
+            }
+          } else if (fc.term === 'default') {
+            color = fc[type]
+            flag = true
+          }
+      }
+      if (flag) {
+        break
+      }
+    }
+  }
+
+  if (!color) {
+      color = defaultColor;
+  }
+  return color
+}
+
+export function getPivotConditions(chart: Chart) {
+  const { threshold } = parseJson(chart.senior)
+  if (!threshold.enable) {
+    return
+  }
+  const res = {
+    text: [],
+    background: []
+  }
+  const conditions = threshold.tableThreshold ?? []
+
+  const dimFields = [...chart.xAxis, ...chart.xAxisExt].map(i => i.dataeaseName)
+  const allFields = [...chart.xAxis, ...chart.xAxisExt, ...chart.yAxis]
+  const fieldIdToName = allFields.reduce((acc, f) => {
+    acc[f.id] = f.dataeaseName
+    return acc
+  }, {})
+
+  if (conditions?.length > 0) {
+    const { tableCell, basicStyle, tableHeader } = parseJson(chart.customAttr)
+    const enableTableCrossBG = tableCell.enableTableCrossBG
+    // 单元格字体颜色
+    const valueColor = isAlphaColor(tableCell.tableFontColor)
+      ? tableCell.tableFontColor
+      : hexColorToRGBA(tableCell.tableFontColor, basicStyle.alpha)
+    // 单元格背景颜色
+    const valueBgColor = enableTableCrossBG
+      ? null
+      : isAlphaColor(tableCell.tableItemBgColor)
+      ? tableCell.tableItemBgColor
+      : hexColorToRGBA(tableCell.tableItemBgColor, basicStyle.alpha)
+    // 列头字体颜色
+    const colHeaderValueColor = isAlphaColor(tableHeader.tableHeaderFontColor)
+      ? tableHeader.tableHeaderFontColor
+      : hexColorToRGBA(tableHeader.tableHeaderFontColor, basicStyle.alpha)
+    // 列头背景颜色
+    const colHeaderBgColor = isAlphaColor(tableHeader.tableHeaderBgColor)
+      ? tableHeader.tableHeaderBgColor
+      : hexColorToRGBA(tableHeader.tableHeaderBgColor, basicStyle.alpha)
+    // 行头字体颜色
+    const rowHeaderValueColor = isAlphaColor(tableHeader.tableHeaderColFontColor)
+    ? tableHeader.tableHeaderColFontColor
+    : hexColorToRGBA(tableHeader.tableHeaderColFontColor, basicStyle.alpha)
+    // 行头背景颜色
+    const rowHeaderBgColor = isAlphaColor(tableHeader.tableHeaderColBgColor)
+      ? tableHeader.tableHeaderColBgColor
+      : hexColorToRGBA(tableHeader.tableHeaderColBgColor, basicStyle.alpha)
+    const filedValueMap = getFieldValueMap(chart)
+
+
+
+    const targetRulesMap = {} // columnName -> Array<{ rule, sourceField }>
+    const xFields = chart.xAxis.map(f => f.dataeaseName)
+    const xExtFields = chart.xAxisExt.map(f => f.dataeaseName)
+    const yFields = chart.yAxis.map(f => f.dataeaseName)
+    for (let i = 0; i < conditions.length; i++) {
+      const fieldItem = conditions[i]
+      if (!fieldItem.conditions) continue;
+
+      for (let j = 0; j < fieldItem.conditions.length; j++) {
+        const rule = fieldItem.conditions[j]
+        let targets = []
+        if (rule.target === 'total_row') {
+          if (xFields.includes(fieldItem.field.dataeaseName)) {
+            targets.push(...xFields)
+            if (basicStyle.quotaPosition === 'row') {
+              targets.push(EXTRA_FIELD)
+            }
+          }
+          if (xExtFields.includes(fieldItem.field.dataeaseName)) {
+            targets.push(...xExtFields)
+            if (basicStyle.quotaPosition !== 'row') {
+              targets.push(EXTRA_FIELD)
+            }
+          }
+          targets.push(...yFields)
+        } else if (rule.target === 'custom' && rule.targetFieldId) {
+          const targetName = fieldIdToName[rule.targetFieldId]
+          if (targetName) targets = [targetName]
+        } else {
+          targets = [fieldItem.field.dataeaseName]
+        }
+
+        targets.forEach(targetName => {
+          if (!targetRulesMap[targetName]) {
+            targetRulesMap[targetName] = []
+          }
+          targetRulesMap[targetName].push({
+            rule: rule,
+            sourceField: fieldItem.field
+          })
+        })
+      }
+    }
+
+    for (const targetName in targetRulesMap) {
+      const rules = targetRulesMap[targetName]
+      let defaultValueColor = valueColor
+      let defaultBgColor = valueBgColor
+      if (xFields.includes(targetName)) {
+        defaultValueColor = rowHeaderValueColor
+        defaultBgColor = rowHeaderBgColor
+      }
+      if (xExtFields.includes(targetName)) {
+        defaultValueColor = colHeaderValueColor
+        defaultBgColor = colHeaderBgColor
+      }
+
+      res.text.push({
+        field: targetName,
+        mapping(value, rowData) {
+          if (!value && !rowData) {
+            return null
+          }
+          // 角头
+          if (rowData.cornerType) {
+            return null
+          }
+
+          return {
+            fill: mappingPivotColor(value, defaultValueColor, rules.toReversed(), 'color', filedValueMap, rowData)
+          }
+        }
+      })
+      res.background.push({
+        field: targetName,
+        mapping(value, rowData) {
+          if (!value && !rowData) {
+            return null
+          }
+          // 角头
+          if (rowData.cornerType) {
+            return null
+          }
+
+          const fill = mappingPivotColor(
+            value,
+            defaultBgColor,
+            rules.toReversed(),
+            'backgroundColor',
+            filedValueMap,
+            rowData
+          )
+          if (isTransparent(fill)) {
+            return null
+          }
+          return { fill }
+        }
+      })
+    }
+  }
+  return res
+}
+
+export function mappingPivotColor(value, defaultColor, rules, type, filedValueMap?, rowData?) {
+  let color = null
+
+  for (let i = 0; i < rules.length; i++) {
+    const { rule, sourceField } = rules[i]
+    let flag = false
+    const t = rule
+    let targetValue, max, min
+
+    let checkValue = value;
+    if (sourceField.dataeaseName) {
+      checkValue = rowData?.[sourceField.dataeaseName]
+      if (checkValue === undefined) {
+        checkValue = rowData?.query?.[sourceField.dataeaseName]
+      }
+    }
+
+    if (rowData.isGrandTotals || rowData.isSubTotals) {
+      if (rule.target !== 'total_row') {
+        return null
+      }
+      checkValue = rowData?.query?.[sourceField.dataeaseName]
+    }
+
+    if (rowData.field === EXTRA_FIELD) {
+      if (rule.target !== 'total_row') {
+        return null
+      }
+      checkValue = rowData?.query?.[sourceField.dataeaseName]
+    }
+    if (checkValue === undefined) {
+      return null
+    }
+
+    if (t.type === 'dynamic') {
+      if (t.term === 'between') {
+        max = parseFloat(getValue(t.dynamicMaxField, filedValueMap, rowData))
+        min = parseFloat(getValue(t.dynamicMinField, filedValueMap, rowData))
+      } else {
+        targetValue = getValue(t.dynamicField, filedValueMap, rowData)
+      }
+    } else {
+      if (t.term === 'between') {
+        min = parseFloat(t.min)
+        max = parseFloat(t.max)
+      } else {
+        targetValue = t.value
+      }
+    }
+
+    const val = checkValue;
+
+    if (sourceField.deType === 2 || sourceField.deType === 3 || sourceField.deType === 4) {
+      targetValue = parseFloat(targetValue)
+      const numVal = parseFloat(val)
+      if (t.term === 'eq') {
+        if (numVal === targetValue) {
+          color = t[type]
+          flag = true
+        }
+      } else if (t.term === 'not_eq') {
+        if (numVal !== targetValue) {
+          color = t[type]
+          flag = true
+        }
+      } else if (t.term === 'lt') {
+        if (numVal < targetValue) {
+          color = t[type]
+          flag = true
+        }
+      } else if (t.term === 'gt') {
+        if (numVal > targetValue) {
+          color = t[type]
+          flag = true
+        }
+      } else if (t.term === 'le') {
+        if (val !== null && numVal <= targetValue) {
+          color = t[type]
+          flag = true
+        }
+      } else if (t.term === 'ge') {
+        if (val !== null && numVal >= targetValue) {
+          color = t[type]
+          flag = true
+        }
+      } else if (t.term === 'between') {
+        if (val !== null && min <= numVal && numVal <= max) {
+          color = t[type]
+          flag = true
+        }
+      } else if (t.term === 'default') {
+        color = t[type]
+        flag = true
+      } else if (t.term === 'null') {
+        if (val === null || val === undefined || val === '') {
+          color = t[type]
+          flag = true
+        }
+      } else if (t.term === 'not_null') {
+        if (val !== null && val !== undefined && val !== '') {
+          color = t[type]
+          flag = true
+        }
+      }
+      if (flag) {
+        break
+      }
+    } else if (sourceField.deType === 0 || sourceField.deType === 5) {
+      if (t.term === 'eq') {
+        if (val === targetValue) {
+          color = t[type]
+          flag = true
+        }
+      } else if (t.term === 'not_eq') {
+        if (val !== targetValue) {
+          color = t[type]
+          flag = true
+        }
+      } else if (t.term === 'like') {
+        if (val && val.includes(targetValue)) {
+          color = t[type]
+          flag = true
+        }
+      } else if (t.term === 'not like') {
+        if (val && !val.includes(targetValue)) {
+          color = t[type]
+          flag = true
+        }
+      } else if (t.term === 'null') {
+        if (val === null || val === undefined || val === '') {
+          color = t[type]
+          flag = true
+        }
+      } else if (t.term === 'not_null') {
+        if (val !== null && val !== undefined && val !== '') {
+          color = t[type]
+          flag = true
+        }
+      } else if (t.term === 'default') {
+        color = t[type]
+        flag = true
+      }
+      if (flag) {
+        break
+      }
+    } else {
+      const fc = rule
+      if (fc.term === 'null') {
+        if (val === null || val === undefined || val === '') {
+          color = fc[type]
+          flag = true
+        }
+      } else if (fc.term === 'not_null') {
+        if (val !== null && val !== undefined && val !== '') {
+          color = fc[type]
+          flag = true
+        }
+      }
+      if (flag) {
+        break
+      }
+      // time
+      if (!targetValue || !val) {
+        break
+      } else {
+          // 特殊时间格式不转换, 包含时或者包含时、分时(不包含秒), 直接比较字符串，因为new Date转换会有误差
+          const isSpecialTimeFormat = (dateStyle?: string) =>
+            dateStyle === 'H_m_s' || (dateStyle && dateStyle.length > 5 && dateStyle.length < 11)
+
+          let v: number | string
+          let compareTv = targetValue;
+          if (isSpecialTimeFormat(sourceField?.dateStyle)) {
+            v = val
+          } else {
+            v = new Date(val.replace(/-/g, '/') + ' GMT+8').getTime()
+            compareTv = new Date(targetValue.toString().replace(/-/g, '/') + ' GMT+8').getTime()
+          }
+          if (fc.term === 'eq') {
+            if (v === compareTv) {
+              color = fc[type]
+              flag = true
+            }
+          } else if (fc.term === 'not_eq') {
+            if (v !== compareTv) {
+              color = fc[type]
+              flag = true
+            }
+          } else if (fc.term === 'lt') {
+            if (v < compareTv) {
+              color = fc[type]
+              flag = true
+            }
+          } else if (fc.term === 'gt') {
+            if (v > compareTv) {
+              color = fc[type]
+              flag = true
+            }
+          } else if (fc.term === 'le') {
+            if (v <= compareTv) {
+              color = fc[type]
+              flag = true
+            }
+          } else if (fc.term === 'ge') {
+            if (v >= compareTv) {
+              color = fc[type]
+              flag = true
+            }
+          } else if (fc.term === 'default') {
+            color = fc[type]
+            flag = true
+          }
+      }
+      if (flag) {
+        break
+      }
+    }
+  }
+
+  if (!color) {
+      color = defaultColor;
   }
   return color
 }
@@ -864,7 +1608,13 @@ function getFieldValueMap(view) {
 
 function getValue(field, filedValueMap, rowData) {
   if (field.summary === 'value') {
-    return rowData ? rowData[field.field?.dataeaseName] : undefined
+    // 单元格数据
+    let value =  rowData?.[field.field?.dataeaseName]
+    // 表头数据
+    if (value === undefined) {
+      value = rowData.query?.[field.field?.dataeaseName]
+    }
+    return value
   } else {
     return filedValueMap[field.summary + '-' + field.fieldId]
   }
@@ -1088,11 +1838,22 @@ export function copyContent(s2Instance: SpreadSheet, event, fieldMeta) {
       const curCell = cells[0]
       if (cell.getMeta().id === curCell.id) {
         const cellMeta = cell.getMeta()
-        const value = cellMeta.data?.[cellMeta.valueField]
-        const metaObj = find(fieldMeta, m => m.field === cellMeta.valueField)
+        const valueField = cellMeta.valueField
+        const value = cellMeta.data?.[valueField]
+        const metaObj = find(fieldMeta, m => m.field === valueField)
         let fieldVal = value?.toString()
         if (metaObj) {
           fieldVal = metaObj.formatter(value)
+        }
+        if (fieldVal === undefined || fieldVal === null) {
+          const fieldMap = fieldMeta?.reduce((p, n) => {
+            p[n.field] = n.name
+            return p
+          }, {})
+          fieldVal = cellMeta.value
+          if (fieldMap?.[fieldVal]) {
+            fieldVal = fieldMap[fieldVal]
+          }
         }
         copyString(fieldVal, true)
       }
@@ -1133,11 +1894,25 @@ export function copyContent(s2Instance: SpreadSheet, event, fieldMeta) {
         const arr = matrix[k] as TableDataCell[]
         arr.forEach((cell, index) => {
           const cellMeta = cell.getMeta()
-          const value = cellMeta.data?.[cellMeta.valueField]
-          const metaObj = find(fieldMeta, m => m.field === cellMeta.valueField)
+          const valueField = cellMeta.valueField
+          const value = cellMeta.data?.[valueField]
+          const metaObj = find(fieldMeta, m => m.field === valueField)
           let fieldVal = value?.toString()
           if (metaObj) {
             fieldVal = metaObj.formatter(value)
+          }
+          if (cellMeta.isSummaryLabel) {
+              fieldVal = cellMeta.fieldValue?.toString() ?? fieldVal
+          }
+          if (fieldVal === undefined || fieldVal === null) {
+            const fieldMap = fieldMeta?.reduce((p, n) => {
+              p[n.field] = n.name
+              return p
+            }, {})
+            fieldVal = cellMeta.value
+            if (fieldMap?.[fieldVal]) {
+              fieldVal = fieldMap[fieldVal]
+            }
           }
           if (fieldVal === undefined || fieldVal === null) {
             fieldVal = ''
@@ -1163,6 +1938,9 @@ export function copyContent(s2Instance: SpreadSheet, event, fieldMeta) {
     content = value?.toString()
     if (metaObj) {
       content = metaObj.formatter(value)
+    }
+    if (cellMeta.isSummaryLabel) {
+      content = cellMeta.fieldValue?.toString() ?? content
     }
   } else {
     // 列头&行头
@@ -1380,22 +2158,24 @@ export async function exportGridPivot(instance: PivotSheet, chart: ChartObj) {
     for (let colIndex = 0; colIndex < colLeafNodes.length; colIndex++) {
       const dataCellMeta = layoutResult.getCellMeta(rowIndex, colIndex)
       const { fieldValue } = dataCellMeta
-      if (fieldValue === 0 || fieldValue) {
-        const meta = metaMap[dataCellMeta.valueField]
-        const cell = worksheet.getCell(rowIndex + maxColHeight + 1, rowLength + colIndex + 1)
-        cell.alignment = { vertical: 'middle', horizontal: 'center' }
-        const value = meta?.formatter?.(fieldValue) || fieldValue
-        if (typeof value === 'number') {
-          cell.value = value
-        } else if (typeof value === 'string') {
-          const formatterCfg = formatterMap?.[dataCellMeta.valueField]
-          const result = extractNumber(value, formatterCfg)
-          if (typeof result === 'string') {
-            cell.value = result
-          } else {
-            cell.value = result.value
-            cell.numFmt = result.numFmt
-          }
+      const cell = worksheet.getCell(rowIndex + maxColHeight + 1, rowLength + colIndex + 1)
+      cell.alignment = { vertical: 'middle', horizontal: 'center' }
+      if (fieldValue === "-" || fieldValue === null || fieldValue === undefined) {
+        cell.value = '-'
+        continue
+      }
+      const meta = metaMap[dataCellMeta.valueField]
+      const value = meta?.formatter?.(fieldValue) || fieldValue
+      if (typeof value === 'number') {
+        cell.value = value
+      } else if (typeof value === 'string') {
+        const formatterCfg = formatterMap?.[dataCellMeta.valueField]
+        const result = extractNumber(value, formatterCfg)
+        if (typeof result === 'string') {
+          cell.value = result
+        } else {
+          cell.value = result.value
+          cell.numFmt = result.numFmt
         }
       }
     }
@@ -1568,22 +2348,24 @@ export async function exportRowQuotaGridPivot(instance: PivotSheet, chart: Chart
     for (let colIndex = 0; colIndex < colLeafNodes.length; colIndex++) {
       const dataCellMeta = layoutResult.getCellMeta(rowIndex, colIndex)
       const { fieldValue } = dataCellMeta
-      if (fieldValue === 0 || fieldValue) {
-        const meta = metaMap[dataCellMeta.valueField]
-        const cell = worksheet.getCell(rowIndex + maxColHeight + 1, rowLength + colIndex + 2)
-        const value = meta?.formatter?.(fieldValue) || fieldValue
-        cell.alignment = { vertical: 'middle', horizontal: 'center' }
-        if (typeof value === 'number') {
-          cell.value = value
-        } else if (typeof value === 'string') {
-          const formatterCfg = formatterMap?.[dataCellMeta.valueField]
-          const result = extractNumber(value, formatterCfg)
-          if (typeof result === 'string') {
-            cell.value = result
-          } else {
-            cell.value = result.value
-            cell.numFmt = result.numFmt
-          }
+      const cell = worksheet.getCell(rowIndex + maxColHeight + 1, rowLength + colIndex + 2)
+      cell.alignment = { vertical: 'middle', horizontal: 'center' }
+      if (fieldValue === "-" || fieldValue === null || fieldValue === undefined) {
+        cell.value = '-'
+        continue
+      }
+      const meta = metaMap[dataCellMeta.valueField]
+      const value = meta?.formatter?.(fieldValue) || fieldValue
+      if (typeof value === 'number') {
+        cell.value = value
+      } else if (typeof value === 'string') {
+        const formatterCfg = formatterMap?.[dataCellMeta.valueField]
+        const result = extractNumber(value, formatterCfg)
+        if (typeof result === 'string') {
+          cell.value = result
+        } else {
+          cell.value = result.value
+          cell.numFmt = result.numFmt
         }
       }
     }
@@ -1707,22 +2489,24 @@ export async function exportTreePivot(instance: PivotSheet, chart: ChartObj) {
     for (let colIndex = 0; colIndex < colLeafNodes.length; colIndex++) {
       const dataCellMeta = layoutResult.getCellMeta(rowIndex, colIndex)
       const { fieldValue } = dataCellMeta
-      if (fieldValue === 0 || fieldValue) {
-        const meta = metaMap[dataCellMeta.valueField]
-        const cell = worksheet.getCell(rowIndex + maxColHeight + 1, colIndex + 1 + 1)
-        const value = meta?.formatter?.(fieldValue) || fieldValue
-        cell.alignment = { vertical: 'middle', horizontal: 'center' }
-        if (typeof value === 'number') {
-          cell.value = value
-        } else if (typeof value === 'string') {
-          const formatterCfg = formatterMap?.[dataCellMeta.valueField]
-          const result = extractNumber(value, formatterCfg)
-          if (typeof result === 'string') {
-            cell.value = result
-          } else {
-            cell.value = result.value
-            cell.numFmt = result.numFmt
-          }
+      const cell = worksheet.getCell(rowIndex + maxColHeight + 1, colIndex + 1 + 1)
+      cell.alignment = { vertical: 'middle', horizontal: 'center' }
+      if (fieldValue === "-" || fieldValue === null || fieldValue === undefined) {
+        cell.value = '-'
+        continue
+      }
+      const meta = metaMap[dataCellMeta.valueField]
+      const value = meta?.formatter?.(fieldValue) || fieldValue
+      if (typeof value === 'number') {
+        cell.value = value
+      } else if (typeof value === 'string') {
+        const formatterCfg = formatterMap?.[dataCellMeta.valueField]
+        const result = extractNumber(value, formatterCfg)
+        if (typeof result === 'string') {
+          cell.value = result
+        } else {
+          cell.value = result.value
+          cell.numFmt = result.numFmt
         }
       }
     }
@@ -1847,22 +2631,24 @@ export async function exportRowQuotaTreePivot(instance: PivotSheet, chart: Chart
     for (let colIndex = 0; colIndex < colLeafNodes.length; colIndex++) {
       const dataCellMeta = layoutResult.getCellMeta(rowIndex, colIndex)
       const { fieldValue } = dataCellMeta
-      if (fieldValue === 0 || fieldValue) {
-        const meta = metaMap[dataCellMeta.valueField]
-        const cell = worksheet.getCell(rowIndex + maxColHeight + 1, colIndex + 2)
-        const value = meta?.formatter?.(fieldValue) || fieldValue
-        cell.alignment = { vertical: 'middle', horizontal: 'center' }
-        if (typeof value === 'number') {
-          cell.value = value
-        } else if (typeof value === 'string') {
-          const formatterCfg = formatterMap?.[dataCellMeta.valueField]
-          const result = extractNumber(value, formatterCfg)
-          if (typeof result === 'string') {
-            cell.value = result
-          } else {
-            cell.value = result.value
-            cell.numFmt = result.numFmt
-          }
+      const cell = worksheet.getCell(rowIndex + maxColHeight + 1, colIndex + 2)
+      cell.alignment = { vertical: 'middle', horizontal: 'center' }
+      if (fieldValue === "-" || fieldValue === null || fieldValue === undefined) {
+        cell.value = '-'
+        continue
+      }
+      const meta = metaMap[dataCellMeta.valueField]
+      const value = meta?.formatter?.(fieldValue) || fieldValue
+      if (typeof value === 'number') {
+        cell.value = value
+      } else if (typeof value === 'string') {
+        const formatterCfg = formatterMap?.[dataCellMeta.valueField]
+        const result = extractNumber(value, formatterCfg)
+        if (typeof result === 'string') {
+          cell.value = result
+        } else {
+          cell.value = result.value
+          cell.numFmt = result.numFmt
         }
       }
     }
@@ -1909,18 +2695,12 @@ function extractNumber(
         numFmt
       }
     }
-    const value = parseFloat(result)
-    let numFmt = '#'
-    if (formatterCfg.thousandSeparator) {
-      numFmt += ',#'
-    }
-    if (Math.abs(value) < 1) {
-      numFmt = '0'
-    }
+    const value = parseFloat(result) / 100
+    let numFmt = '0'
     if (formatterCfg.decimalCount > 0) {
       numFmt += `.${'0'.repeat(formatterCfg.decimalCount)}`
     }
-    numFmt += '"%"'
+    numFmt += '%'
     return {
       value,
       numFmt
@@ -2035,6 +2815,9 @@ export function configMergeCells(chart: Chart, options: S2Options, dataConfig: S
     const mergedCellsInfo = []
     const axisToMerge = dataConfig.meta.filter((_, i) => i < quotaIndex || quotaIndex === -1)
     axisToMerge.forEach((a, i) => {
+      if (mergedColInfo[i - 1]) {
+        mergedColInfo[i - 1] = []
+      }
       const preMergedColInfo = mergedColInfo[i]
       const curMergedColInfo = []
       mergedColInfo.push(curMergedColInfo)
@@ -2048,7 +2831,10 @@ export function configMergeCells(chart: Chart, options: S2Options, dataConfig: S
             const curRange = index - lastIndex
             if (curRange > 1 || (index === end && curRange === 1 && lastVal === curVal)) {
               const tmpMergeCells = []
-              const textIndex = curRange % 2 === 1 ? (curRange - 1) / 2 : curRange / 2 - 1
+              let textIndex = curRange % 2 === 1 ? (curRange - 1) / 2 : curRange / 2 - 1
+              if (index === end && lastVal === curVal) {
+                textIndex = curRange % 2 === 1 ? (curRange - 1) / 2 : curRange / 2
+              }
               for (let j = 0; j < curRange; j++) {
                 tmpMergeCells.push({
                   colIndex: showIndex ? i + 1 : i,
@@ -2134,6 +2920,22 @@ class CustomMergedCell extends MergedCell {
     })
   }
 
+
+  protected getTextStyle() {
+    const textStyle = super.getTextStyle()
+    const dataCellAlignConfig = this.theme.dataCellAlignConfig
+    if (dataCellAlignConfig) {
+      const align = dataCellAlignConfig[this.meta.valueField]
+      if (align) {
+        textStyle.textAlign = align
+      }
+    }
+    if (textStyle.textAlign === 'custom') {
+      textStyle.textAlign = 'left'
+    }
+    return textStyle
+  }
+
   drawTextShape(): void {
     if (this.meta.deFieldType === 7) {
       drawImage.apply(this)
@@ -2158,11 +2960,40 @@ export class CustomDataCell extends TableDataCell {
     })
   }
 
+  public getBackgroundColor() {
+    let bgColorInfo = super.getBackgroundColor()
+    if (this.meta.isMergedCell) {
+      bgColorInfo = {
+        ...bgColorInfo,
+        backgroundColorOpacity: 0
+      }
+    }
+    return bgColorInfo
+  }
+
+  protected getTextStyle() {
+    const textStyle = super.getTextStyle()
+    const dataCellAlignConfig = this.theme.dataCellAlignConfig
+    if (dataCellAlignConfig) {
+      const align = dataCellAlignConfig[this.meta.valueField]
+      if (align) {
+        textStyle.textAlign = align
+      }
+    }
+    if (textStyle.textAlign === 'custom') {
+      textStyle.textAlign = 'left'
+    }
+    return textStyle
+  }
+
   /**
    * 重写绘制文本内容的方法
    * @protected
    */
   protected drawTextShape() {
+    if(this.meta.isMergedCell) {
+      return
+    }
     if (this.meta.autoWrap) {
       drawTextShape(this, false)
     } else {
@@ -2172,6 +3003,35 @@ export class CustomDataCell extends TableDataCell {
 }
 
 export class CustomTableColCell extends TableColCell {
+
+  protected drawBorders() {
+    super.drawBorders()
+    const { options, isTableMode } = this.spreadsheet
+    if (this.meta.colIndex === 0 && isTableMode() && options.showSeriesNumber) {
+      this.drawVerticalBorder(CellBorderPosition.LEFT)
+    }
+  }
+
+  protected getTextStyle() {
+    const textStyle = super.getTextStyle()
+    const colCellAlignConfig = this.theme.colCellAlignConfig
+    if (colCellAlignConfig) {
+      // 分组单元格居中
+      if (this.meta.children?.length) {
+        textStyle.textAlign = 'center'
+        return textStyle
+      }
+      const align = colCellAlignConfig[this.meta.field]
+      if (align) {
+        textStyle.textAlign = align
+      }
+    }
+    if (textStyle.textAlign === 'custom') {
+      textStyle.textAlign = 'left'
+    }
+    return textStyle
+  }
+
   /**
    * 重写是为了表头文本内容的换行
    * @protected
@@ -2204,7 +3064,7 @@ const drawTextShape = (cell, isHeader) => {
   // 单元格文本
   const { formattedValue } = cell.getFormattedFieldValue()
   // 获取文本样式
-  const textStyle = cell.getTextStyle()
+  const textStyle = cloneDeep(cell.getTextStyle())
   // 宽度能放几个字符，就放几个，放不下就换行
   let wrapText = getWrapText(
     formattedValue ? formattedValue?.toString() : emptyPlaceholder,
@@ -2260,7 +3120,8 @@ const drawTextShape = (cell, isHeader) => {
   cell.actualTextWidth = cell.spreadsheet.measureTextWidth(wrapText, textStyle)
 
   // 获取文本位置并渲染文本
-  const { x, y } = cell.getTextAndIconPosition()?.text || cell.getTextPosition()
+  const { y } = cell.getTextAndIconPosition()?.text || cell.getTextPosition()
+  const x = getTextStartX(cell, textStyle)
   // 绘制文本
   cell.textShape = renderText(cell, [cell.textShape], x, y, wrapText, textStyle, {
     fontSize: extraStyleFontSize
@@ -2268,6 +3129,32 @@ const drawTextShape = (cell, isHeader) => {
 
   // 将文本形状添加到形状数组
   cell.textShapes.push(cell.textShape)
+}
+
+/**
+ * 计算文本起始X位置
+ * @param cell
+ * @param textStyle
+ */
+function getTextStartX(cell, textStyle) {
+  // 获取单元格区域
+  const area = cell.getCellArea()
+  const padding = cell.getStyle()?.cell?.padding ?? { left: 0, right: 0 }
+  const align = textStyle.textAlign ?? 'left'
+  const paddingLeft = padding.left || 0
+  const paddingRight = padding.right || 0
+  // 可用宽度（扣除 padding）
+  const availableWidth = area.width - paddingLeft - paddingRight
+  switch (align) {
+    case 'left':
+      return area.x + paddingLeft
+    case 'center':
+      return area.x + paddingLeft + availableWidth / 2
+    case 'right':
+      return area.x + area.width - paddingRight
+    default:
+      return area.x + paddingLeft
+  }
 }
 
 /**
@@ -2332,27 +3219,32 @@ const getWrapText = (sourceText, textStyle, cellWidth, spreadsheet) => {
   sourceText = sourceText.toString().trim()
   const getTextWidth = text => spreadsheet.measureTextWidthRoughly(text, textStyle)
 
-  let resultWrapText = ''
-  let restText = ''
-  let restTextWidth = 0
-  for (let i = 0; i < sourceText.length; i++) {
-    const char = sourceText[i]
-    const charWidth = getTextWidth(char)
-    restTextWidth += charWidth
-    restText += char
-    // 中文时，需要单元格宽度减去16个文字宽度，否则会超出单元格宽度
-    const cWidth = char.charCodeAt(0) >= 128 ? 12 : 8
-    // 添加换行
-    if (restTextWidth >= cellWidth - textStyle.fontSize - cWidth) {
-      // 最后一个字符不添加换行符
-      resultWrapText += restText + (i !== sourceText.length - 1 ? '\n' : '')
-      restText = ''
-      restTextWidth = 0
-    }
-  }
+  return sourceText
+    .split('\n')
+    .map(text => {
+      let resultWrapText = ''
+      let restText = ''
+      let restTextWidth = 0
+      for (let i = 0; i < text.length; i++) {
+        const char = text[i]
+        const charWidth = getTextWidth(char)
+        restTextWidth += charWidth
+        restText += char
+        // 中文时，需要单元格宽度减去16个文字宽度，否则会超出单元格宽度
+        const cWidth = char.charCodeAt(0) >= 128 ? 12 : 8
+        // 添加换行
+        if (restTextWidth >= cellWidth - textStyle.fontSize - cWidth) {
+          // 最后一个字符不添加换行符
+          resultWrapText += restText + (i !== text.length - 1 ? '\n' : '')
+          restText = ''
+          restTextWidth = 0
+        }
+      }
 
-  resultWrapText += restText
-  return resultWrapText
+      resultWrapText += restText
+      return resultWrapText
+    })
+    .join('\n')
 }
 /**
  * 计算文本行高
@@ -2375,7 +3267,7 @@ const getWrapTextHeight = (wrapText, textStyle, spreadsheet, maxLines) => {
 }
 
 // 导出获取汇总行的函数
-export function getSummaryRow(data, axis, sumCon = []) {
+export function getSummaryRow(data, axis, sumCon = [], customSumResult = {}) {
   const summaryObj = { SUMMARY: true }
   for (let i = 0; i < axis.length; i++) {
     const a = axis[i].dataeaseName
@@ -2459,6 +3351,9 @@ export function getSummaryRow(data, axis, sumCon = []) {
             .toNumber() // 计算总体标准差
         }
         break
+      case 'custom':
+        summaryObj[a] = customSumResult[a]
+        break
     }
   }
 
@@ -2469,7 +3364,18 @@ export function getSummaryRow(data, axis, sumCon = []) {
 export class SummaryCell extends CustomDataCell {
   getTextStyle() {
     const textStyle = cloneDeep(this.theme.colCell.bolderText)
-    textStyle.textAlign = this.theme.dataCell.text.textAlign
+    const dataCellAlignConfig = this.theme.dataCellAlignConfig
+    if (dataCellAlignConfig) {
+      const align = dataCellAlignConfig[this.meta.valueField]
+      if (align) {
+        textStyle.textAlign = align
+      }
+    } else {
+      textStyle.textAlign = this.theme.dataCell.text.textAlign
+    }
+    if (textStyle.textAlign === 'custom') {
+      textStyle.textAlign = 'left'
+    }
     return textStyle
   }
 
@@ -2508,6 +3414,8 @@ export const configEmptyDataStyle = (newChart, basicStyle, newData, container) =
       emptyDom.setAttribute(
         'style',
         `position: absolute;
+        color: ${basicStyle.tableEmptyFontColor ?? 'inherit'};
+        font-size: ${basicStyle.tableEmptyFontSize ? basicStyle.tableEmptyFontSize + 'px' : 'inherit'};
         left: ${left}px;
         top: 50%;`
       )
@@ -2737,4 +3645,8 @@ const calculateGroupHeaderMaxTextHeight = (
     textStyle.fontSize +
     10.5
   )
+}
+
+export const isNumeric = (value: any): boolean => {
+  return !isNaN(parseFloat(value)) && isFinite(value)
 }

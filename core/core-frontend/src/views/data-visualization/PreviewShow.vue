@@ -8,7 +8,12 @@ import PreviewHead from '@/views/data-visualization/PreviewHead.vue'
 import EmptyBackground from '@/components/empty-background/src/EmptyBackground.vue'
 import { storeToRefs } from 'pinia'
 import { useAppStoreWithOut } from '@/store/modules/app'
-import { initCanvasData, initCanvasDataPrepare, onInitReady } from '@/utils/canvasUtils'
+import {
+  getMapElementIds,
+  initCanvasData,
+  initCanvasDataPrepare,
+  onInitReady
+} from '@/utils/canvasUtils'
 import { useMoveLine } from '@/hooks/web/useMoveLine'
 import { Icon } from '@/components/icon-custom'
 import { download2AppTemplate, downloadCanvas2 } from '@/utils/imgUtils'
@@ -26,6 +31,7 @@ import {
   exportLogPDF,
   exportLogTemplate
 } from '@/api/visualization/dataVisualization'
+import { deepCopy } from '@/utils/utils'
 const userStore = useUserStoreWithOut()
 
 const userName = computed(() => userStore.getName)
@@ -100,6 +106,12 @@ const loadCanvasData = (dvId, weight?, ext?) => {
       state.dvInfo = dvInfo
       state.curPreviewGap = curPreviewGap
       dataInitState.value = true
+      // 修复铺满全屏模版导出错位问题
+      if (props.showPosition !== 'multiplexing') {
+        state.canvasDataPreviewSource = deepCopy(canvasDataResult)
+        state.canvasStylePreviewSource = deepCopy(canvasStyleResult)
+      }
+
       if (props.showPosition === 'preview') {
         dvMainStore.updateCurDvInfo(dvInfo)
         nextTick(() => {
@@ -112,9 +124,10 @@ const loadCanvasData = (dvId, weight?, ext?) => {
     }
   )
 }
-
 const download = type => {
   downloadStatus.value = true
+  const mapElementIds = getMapElementIds(state.canvasDataPreview)
+  mapElementIds.forEach(id => useEmitt().emitter.emit('l7-prepare-picture', id))
   setTimeout(() => {
     const vueDom = previewCanvasContainer.value.querySelector('.canvas-container')
     downloadCanvas2(type, vueDom, state.dvInfo.name, () => {
@@ -124,13 +137,15 @@ const download = type => {
         type: state.dvInfo.type === 'dashboard' ? 'panel' : 'screen'
       }
       type === 'img' ? exportLogImg(param) : exportLogPDF(param)
+      mapElementIds.forEach(id => useEmitt().emitter.emit('l7-unprepare-picture', id))
     })
   }, 200)
 }
-
 const fileDownload = (downloadType, attachParams) => {
   downloadStatus.value = true
-  nextTick(() => {
+  const mapElementIds = getMapElementIds(state.canvasDataPreview)
+  mapElementIds.forEach(id => useEmitt().emitter.emit('l7-prepare-picture', id))
+  setTimeout(() => {
     const vueDom = previewCanvasContainer.value.querySelector('.canvas-container')
     download2AppTemplate(downloadType, vueDom, state.dvInfo.name, attachParams, () => {
       downloadStatus.value = false
@@ -139,8 +154,9 @@ const fileDownload = (downloadType, attachParams) => {
         type: state.dvInfo.type === 'dashboard' ? 'panel' : 'screen'
       }
       downloadType === 'app' ? exportLogApp(param) : exportLogTemplate(param)
+      mapElementIds.forEach(id => useEmitt().emitter.emit('l7-unprepare-picture', id))
     })
-  })
+  }, 1000)
 }
 
 const downloadAsAppTemplate = downloadType => {
@@ -194,6 +210,8 @@ const dataVKeepSize = computed(() => {
 })
 
 const state = reactive({
+  canvasDataPreviewSource: null,
+  canvasStylePreviewSource: null,
   canvasDataPreview: null,
   canvasStylePreview: null,
   canvasViewInfoPreview: null,
@@ -320,10 +338,18 @@ onBeforeMount(() => {
         </div>
       </template>
       <template v-else-if="hasTreeData && mounted">
-        <empty-background :description="t('visualization.select_screen_tips')" img-type="select" />
+        <empty-background
+          v-if="dataInitState"
+          :description="t('visualization.select_screen_tips')"
+          img-type="select"
+        />
       </template>
       <template v-else-if="mounted">
-        <empty-background :description="t('visualization.no_screen')" img-type="none">
+        <empty-background
+          v-if="dataInitState"
+          :description="t('visualization.no_screen')"
+          img-type="none"
+        >
           <el-button v-if="rootManage && !isDataEaseBi" @click="createNew" type="primary">
             <template #icon>
               <Icon name="icon_add_outlined"><icon_add_outlined class="svg-icon" /></Icon>

@@ -5,7 +5,7 @@ import icon_copy_filled from '@/assets/svg/icon_copy_filled.svg'
 import icon_dataset from '@/assets/svg/icon_dataset.svg'
 import icon_deleteTrash_outlined from '@/assets/svg/icon_delete-trash_outlined.svg'
 import icon_intoItem_outlined from '@/assets/svg/icon_into-item_outlined.svg'
-import { debounce } from 'lodash-es'
+import { throttle } from 'lodash-es'
 import icon_rename_outlined from '@/assets/svg/icon_rename_outlined.svg'
 import icon_warning_colorful_red from '@/assets/svg/icon_warning_colorful_red.svg'
 import dvFolder from '@/assets/svg/dv-folder.svg'
@@ -92,6 +92,7 @@ import { iconDatasourceMap } from '@/components/icon-group/datasource-list'
 import { querySymmetricKey } from '@/api/login'
 import { symmetricDecrypt } from '@/utils/encryption'
 import { isFreeFolder } from '@/utils/utils'
+import { AnyColumns } from 'element-plus-secondary/es/components/table-v2/src/types'
 const route = useRoute()
 const interactiveStore = interactiveStoreWithOut()
 interface Field {
@@ -253,9 +254,9 @@ const scrollbarRef = ref()
 
 const generateColumns = (arr: Field[]) =>
   arr.map(ele => ({
-    key: ele.originName,
+    key: ele.originName === 'id' ? 'ids' : ele.originName,
     deType: ele.deType,
-    dataKey: ele.originName,
+    dataKey: ele.originName === 'id' ? 'ids' : ele.originName,
     title: ele.name,
     width: 150,
     headerCellRenderer: ({ column }) => (
@@ -275,13 +276,16 @@ const generateColumns = (arr: Field[]) =>
   }))
 
 const dataPreviewLoading = ref(false)
-const columns = ref([])
-const handleLoadExcel = data => {
+const columns = ref<any[]>([])
+const handleLoadExcel = (data: Record<string, unknown>) => {
   dataPreviewLoading.value = true
+  let num = +new Date()
   previewData(data)
     .then(res => {
       columns.value = generateColumns((res?.data?.fields as Field[]) || [])
-      tabData.value = (res?.data?.data as Array<{}>) || []
+      tabData.value = ((res?.data?.data as any) || []).map(ele => {
+        return { ...ele, ids: ele.id, id: num++ }
+      })
     })
     .finally(() => {
       dataPreviewLoading.value = false
@@ -690,6 +694,24 @@ const updateApiDs = () => {
   })
 }
 
+const syncRemoteExcelDsLoading = ref(false)
+const updateRemoteExcelDs = () => {
+  if (syncRemoteExcelDsLoading.value) {
+    return
+  }
+  syncRemoteExcelDsLoading.value = true
+  syncApiDs({ datasourceId: nodeInfo.id })
+    .then(() => {
+      ElMessage.success(t('datasource.req_completed'))
+      if (showRecord.value) {
+        getRecord()
+      }
+    })
+    .finally(() => {
+      syncRemoteExcelDsLoading.value = false
+    })
+}
+
 const nodeExpand = data => {
   if (data.id) {
     expandedKey.value.push(data.id)
@@ -1042,7 +1064,7 @@ const loadInit = () => {
   }
 }
 
-const proxyAllowDrop = debounce((arg1, arg2) => {
+const proxyAllowDrop = throttle((arg1, arg2) => {
   const flagArray = ['dashboard', 'dataV', 'dataset', 'datasource']
   const flag = flagArray.findIndex(item => item === 'datasource')
   if (flag < 0 || !isFreeFolder(arg2, flag + 1)) {
@@ -1118,7 +1140,12 @@ const getMenuList = (val: boolean) => {
           <div class="icon-methods">
             <span class="title"> {{ t('datasource.datasource') }} </span>
             <div v-if="rootManage" class="flex-align-center">
-              <el-tooltip effect="dark" :content="t('deDataset.new_folder')" placement="top">
+              <el-tooltip
+                offset="14"
+                effect="dark"
+                :content="t('deDataset.new_folder')"
+                placement="top"
+              >
                 <el-icon
                   class="custom-icon btn"
                   :style="{ marginRight: '20px' }"
@@ -1127,7 +1154,12 @@ const getMenuList = (val: boolean) => {
                   <Icon name="dv-new-folder"><dvNewFolder class="svg-icon" /></Icon>
                 </el-icon>
               </el-tooltip>
-              <el-tooltip effect="dark" :content="t('datasource.create')" placement="top">
+              <el-tooltip
+                offset="14"
+                effect="dark"
+                :content="t('datasource.create')"
+                placement="top"
+              >
                 <el-icon class="custom-icon btn" @click="createDatasource">
                   <Icon name="icon_file-add_outlined"
                     ><icon_fileAdd_outlined class="svg-icon"
@@ -1413,7 +1445,14 @@ const getMenuList = (val: boolean) => {
               <el-table-column
                 key="tableName"
                 prop="tableName"
+                show-overflow-tooltip
                 :label="t('datasource.table_name')"
+              />
+              <el-table-column
+                key="name"
+                prop="name"
+                show-overflow-tooltip
+                :label="t('datasource.table_remarks')"
               />
               <el-table-column
                 key="status"
@@ -1525,7 +1564,7 @@ const getMenuList = (val: boolean) => {
                 </el-col>
                 <el-col v-if="!nodeInfo.type.startsWith('Excel')" :span="24">
                   <BaseInfoItem :label="t('common.description')">{{
-                    nodeInfo.description
+                    nodeInfo.description || '-'
                   }}</BaseInfoItem>
                 </el-col>
               </el-row>
@@ -1802,14 +1841,30 @@ const getMenuList = (val: boolean) => {
                 </el-col>
               </el-row>
             </template>
-            <el-button @click="getRecord" class="update-records" text>
-              <template #icon>
-                <icon name="icon_describe_outlined"
-                  ><icon_describe_outlined class="svg-icon"
-                /></icon>
-              </template>
-              {{ t('dataset.update_records') }}
-            </el-button>
+            <div class="update-actions">
+              <el-button
+                v-if="nodeInfo.type === 'ExcelRemote'"
+                @click="updateRemoteExcelDs"
+                :loading="syncRemoteExcelDsLoading"
+                class="update-records"
+                text
+              >
+                <template #icon>
+                  <icon name="icon_replace_outlined"
+                    ><icon_replace_outlined class="svg-icon"
+                  /></icon>
+                </template>
+                {{ t('datasource.execute_once') }}
+              </el-button>
+              <el-button @click="getRecord" class="update-records" text>
+                <template #icon>
+                  <icon name="icon_describe_outlined"
+                    ><icon_describe_outlined class="svg-icon"
+                  /></icon>
+                </template>
+                {{ t('dataset.update_records') }}
+              </el-button>
+            </div>
           </BaseInfoContent>
         </template>
       </template>
@@ -1831,7 +1886,7 @@ const getMenuList = (val: boolean) => {
             <p class="table-name">
               {{ t('datasource.table_name') }}
             </p>
-            <p class="table-value">
+            <p :title="dsTableDetail.tableName" class="table-value">
               {{ dsTableDetail.tableName }}
             </p>
           </el-col>
@@ -1839,7 +1894,7 @@ const getMenuList = (val: boolean) => {
             <p class="table-name">
               {{ t('datasource.table_description') }}
             </p>
-            <p class="table-value">
+            <p :title="dsTableDetail.name" class="table-value">
               {{ dsTableDetail.name || '-' }}
             </p>
           </el-col>
@@ -1986,10 +2041,10 @@ const getMenuList = (val: boolean) => {
 @import '@/style/mixin.less';
 
 .filter-icon-span {
-  border: 1px solid #bbbfc4;
+  border: 1px solid #d9dcdf;
   width: 32px;
   height: 32px;
-  border-radius: 4px;
+  border-radius: 6px;
   color: #1f2329;
   padding: 8px;
   margin-left: 8px;
@@ -2060,6 +2115,17 @@ const getMenuList = (val: boolean) => {
 
           &:hover {
             cursor: pointer;
+            &::after {
+              content: '';
+              background-color: var(--ed-color-primary-1a, #3370ff1a);
+              width: 28px;
+              height: 28px;
+              position: absolute;
+              top: 50%;
+              left: 50%;
+              border-radius: 6px;
+              transform: translate(-50%, -50%);
+            }
           }
         }
       }
@@ -2071,10 +2137,17 @@ const getMenuList = (val: boolean) => {
     }
   }
 
-  .update-records {
+  .update-actions {
     position: absolute;
     top: 19px;
     right: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .update-records {
+    margin: 0;
   }
 
   .update-info {
@@ -2124,9 +2197,9 @@ const getMenuList = (val: boolean) => {
   .api-card {
     width: calc(50% - 16px);
     height: 140px;
-    border-radius: 4px;
+    border-radius: 6px;
     border: 1px solid var(--deCardStrokeColor, #dee0e3);
-    border-radius: 4px;
+    border-radius: 6px;
     margin: 0 0 16px 16px;
     padding: 16px;
     font-family: var(--de-custom_font, 'PingFang');
@@ -2267,7 +2340,7 @@ const getMenuList = (val: boolean) => {
 
         .name {
           margin-left: 8px;
-          max-width: 200px;
+          max-width: 400px;
         }
 
         .create-user {
@@ -2387,6 +2460,10 @@ const getMenuList = (val: boolean) => {
     font-size: 14px;
     font-weight: 400;
     margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    width: 100%;
   }
 
   .table-name {

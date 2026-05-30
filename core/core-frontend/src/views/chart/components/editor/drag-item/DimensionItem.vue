@@ -296,6 +296,7 @@ onMounted(() => {
             }"
           >
             <span class="item-name">{{ item.chartShowName ? item.chartShowName : item.name }}</span>
+            <span :data-id="item.id" class="node-id_private"></span>
           </span>
         </el-tooltip>
         <el-icon v-if="showHideIcon" style="margin-left: 4px">
@@ -740,14 +741,14 @@ onMounted(() => {
   height: 28px;
   line-height: 28px;
   display: flex;
-  border-radius: 4px;
+  border-radius: 6px;
   box-sizing: border-box;
   white-space: nowrap;
   width: 100%;
   justify-content: space-between;
   align-items: center;
   background-color: #3370ff0a;
-  border: 1px solid var(--ed-color-primary);
+  border: 1px solid var(--ed-color-primary) !important;
 }
 
 .item-axis:hover {
@@ -913,6 +914,11 @@ span {
 <style lang="less">
 .data-dropdown_popper_mr9 {
   margin-left: -9px !important;
+}
+.ed-dropdown__popper {
+  :nth-child(1).ed-dropdown-menu__item--divided {
+    display: none !important;
+  }
 }
 .menu-item-padding {
   span {

@@ -146,6 +146,10 @@ watch(
 )
 
 const handleValueChange = () => {
+  if (selectValue.value === null) {
+    selectValue.value = multiple.value ? [] : undefined
+  }
+
   selectValue.value = Array.isArray(selectValue.value)
     ? selectValue.value.map(ele => ele && dayjs(ele).format('YYYY/MM/DD HH:mm:ss'))
     : selectValue.value && dayjs(selectValue.value).format('YYYY/MM/DD HH:mm:ss')
@@ -459,6 +463,17 @@ const onConfirm = () => {
   handleValueChange()
   showDate.value = false
 }
+const showDateQuick = ref(false)
+const showQuick = () => {
+  showDateQuick.value = true
+}
+
+const emitMobile = (_, val) => {
+  const [start, end] = val
+  selectValue.value = [start?.format('YYYY/MM/DD HH:mm:ss'), end?.format('YYYY/MM/DD HH:mm:ss')]
+  handleValueChange()
+  showDateQuick.value = false
+}
 
 onBeforeMount(() => {
   init()
@@ -498,6 +513,7 @@ const formatDate = computed(() => {
     v-else
     :key="config.timeGranularity + 1"
     v-model="selectValue"
+    class="icon-fixed_16"
     @visible-change="visibleChange"
     :disabled-date="disabledDate"
     :type="config.timeGranularity"
@@ -511,7 +527,19 @@ const formatDate = computed(() => {
     :class="isRange && 'wl50'"
     @click="showPopup"
   />
-  <div v-if="dvMainStore.mobileInPc && isRange" class="vant-mobile wr50" @click="showPopupRight" />
+  <div v-if="dvMainStore.mobileInPc && isRange" class="vant-mobile wr50" @click="showPopupRight">
+    <div class="quick-selection" @click.stop="showQuick"></div>
+    <van-popup teleport="body" position="bottom" v-model:show="showDateQuick">
+      <div
+        @click="ele.onClick({ emit: emitMobile })"
+        class="shortcuts-mobile"
+        v-for="ele in shortcuts"
+        :key="ele.text"
+      >
+        {{ ele.text }}
+      </div></van-popup
+    >
+  </div>
   <van-popup
     v-if="dvMainStore.mobileInPc"
     teleport="body"
@@ -572,6 +600,25 @@ const formatDate = computed(() => {
     left: auto;
     right: 0;
     width: 50%;
+
+    .quick-selection {
+      position: absolute;
+      top: 0px;
+      right: 10px;
+      width: 24px;
+      height: 32px;
+      z-index: 10;
+    }
+  }
+}
+.shortcuts-mobile {
+  padding: 10px;
+  text-align: center;
+  border-bottom: 1px solid #eee;
+}
+.icon-fixed_16 {
+  .ed-input__icon {
+    font-size: 16px !important;
   }
 }
 </style>

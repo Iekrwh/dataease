@@ -5,12 +5,15 @@ import {
   ref,
   onBeforeUnmount,
   onBeforeMount,
+  onMounted,
   nextTick
 } from 'vue'
 import { debounce } from 'lodash-es'
 import { XpackComponent } from '@/components/plugin'
 import { useEmitt } from '@/hooks/web/useEmitt'
+import { useLoading } from '@/hooks/web/useLoading'
 
+const { close } = useLoading()
 const currentComponent = shallowRef()
 const Preview = defineAsyncComponent(() => import('@/views/data-visualization/PreviewCanvas.vue'))
 const VisualizationEditor = defineAsyncComponent(
@@ -23,6 +26,10 @@ const ViewWrapper = defineAsyncComponent(() => import('@/pages/panel/ViewWrapper
 const Dataset = defineAsyncComponent(() => import('@/views/visualized/data/dataset/index.vue'))
 const Datasource = defineAsyncComponent(
   () => import('@/views/visualized/data/datasource/index.vue')
+)
+
+const ExportExcel = defineAsyncComponent(
+  () => import('@/views/visualized/data/dataset/ExportExcel.vue')
 )
 const ScreenPanel = defineAsyncComponent(() => import('@/views/data-visualization/PreviewShow.vue'))
 const DashboardPanel = defineAsyncComponent(
@@ -42,7 +49,8 @@ const componentMap = {
   Datasource,
   ScreenPanel,
   DashboardPanel,
-  TemplateManage
+  TemplateManage,
+  ExportExcel
 }
 const iframeStyle = ref(null)
 const setStyle = debounce(() => {
@@ -55,7 +63,9 @@ onBeforeMount(() => {
   window.addEventListener('resize', setStyle)
   setStyle()
 })
-
+onMounted(() => {
+  close()
+})
 onBeforeUnmount(() => {
   window.removeEventListener('resize', setStyle)
 })

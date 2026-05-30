@@ -2,6 +2,7 @@
 import icon_info_outlined from '@/assets/svg/icon_info_outlined.svg'
 import icon_linkRecord_outlined from '@/assets/svg/icon_link-record_outlined.svg'
 import icon_viewinchat_outlined from '@/assets/svg/icon_viewinchat_outlined.svg'
+import { cancelRequestBatch } from '@/config/axios/service'
 import icon_drilling_outlined from '@/assets/svg/icon_drilling_outlined.svg'
 import { useI18n } from '@/hooks/web/useI18n'
 import ChartComponentG2Plot from './components/ChartComponentG2Plot.vue'
@@ -16,6 +17,7 @@ import {
   CSSProperties,
   nextTick,
   onBeforeMount,
+  onBeforeUnmount,
   onMounted,
   PropType,
   provide,
@@ -37,7 +39,7 @@ import { useFilter } from '@/hooks/web/useFilter'
 import { useCache } from '@/hooks/web/useCache'
 
 import { dvMainStoreWithOut } from '@/store/modules/data-visualization/dvMain'
-import { cloneDeep } from 'lodash-es'
+import { cloneDeep, debounce } from 'lodash-es'
 import ChartComponentS2 from '@/views/chart/components/views/components/ChartComponentS2.vue'
 import { ChartLibraryType } from '@/views/chart/components/js/panel/types'
 import chartViewManager from '@/views/chart/components/js/panel'
@@ -181,7 +183,7 @@ const state = reactive({
     width: 'fit-content',
     maxWidth: '100%',
     wordBreak: 'break-word',
-    whiteSpace: 'pre-wrap'
+    whiteSpace: 'pre-wrap!important'
   } as CSSProperties,
   drillFilters: [],
   viewInfoData: null,
@@ -240,7 +242,7 @@ const buildInnerRefreshTimer = (
     const timerRefreshTime = refreshUnit === 'second' ? refreshTime * 1000 : refreshTime * 60000
     innerRefreshTimer = setInterval(() => {
       clearViewLinkage()
-      queryData()
+      queryData(false, true)
       innerSearchCount++
     }, timerRefreshTime)
   }
@@ -259,7 +261,7 @@ watch([() => scale.value], () => {
 watch([() => searchCount.value], () => {
   // 内部计时器启动 忽略外部计时器
   if (!innerRefreshTimer) {
-    queryData()
+    queryData(false, true)
   }
 })
 // 仪表板的查询结果设置变化 图表数据需要刷新
@@ -424,14 +426,8 @@ const windowsJump = (url, jumpType, size = 'middle') => {
       dePreviewPopDialogRef.value.previewInit({ url, size })
     } else if ('_self' === jumpType) {
       newWindow = window.open(url, jumpType)
-      if (inMobile.value) {
-        window.location.reload()
-      }
     } else {
       newWindow = window.open(url, jumpType)
-      if (inMobile.value) {
-        window.location.reload()
-      }
     }
     initOpenHandler(newWindow)
   } catch (e) {
@@ -445,7 +441,11 @@ const jumpClick = param => {
   if (param.name) {
     const colList = [...param.dimensionList, ...param.quotaList]
     colList.forEach(dimensionItem => {
-      if (dimensionItem.id === param.name || dimensionItem.name === param.name) {
+      if (
+        dimensionItem.id === param.name ||
+        dimensionItem.value === param.name ||
+        dimensionItem.name === param.name
+      ) {
         dimension = dimensionItem
         sourceInfo = param.viewId + '#' + dimension.id
         jumpInfo = nowPanelJumpInfo.value[sourceInfo]
@@ -495,14 +495,26 @@ const jumpClick = param => {
         ) {
           // do filter
           curFilter.filter.forEach(filterItem => {
-            targetViewInfoList.forEach(targetViewInfo => {
-              if (targetViewInfo.sourceFieldActiveId === filterItem.filterId) {
-                filterOuterParams[targetViewInfo.outerParamsName] = {
-                  operator: filterItem.operator,
-                  value: filterItem.value
+            if (filterItem.filterFrom !== 'optionFilter') {
+              targetViewInfoList.forEach(targetViewInfo => {
+                if (targetViewInfo.sourceFieldActiveId === filterItem.filterId) {
+                  const outerFilterItem = filterOuterParams[targetViewInfo.outerParamsName]
+                  if (outerFilterItem) {
+                    // 当前已经存在 根据arrayType 放置位置
+                    if (filterItem['arrayType'] === 'END') {
+                      outerFilterItem.value[outerFilterItem.value.length - 1] = filterItem.value[0]
+                    } else {
+                      outerFilterItem.value[0] = filterItem.value[0]
+                    }
+                  } else {
+                    filterOuterParams[targetViewInfo.outerParamsName] = {
+                      operator: filterItem.operator,
+                      value: filterItem.value
+                    }
+                  }
                 }
-              }
-            })
+              })
+            }
           })
         }
         let attachParamsInfo
@@ -567,17 +579,26 @@ const jumpClick = param => {
   }
 }
 
-const queryData = (firstLoad = false) => {
+const queryDataFromSelect = (firstLoad = false) => {
+  cancelRequestBatch(`chartData/getData/${view.value.id}`)
+  loading.value = false
+  queryData(firstLoad)
+}
+
+const queryData = debounce((firstLoad = false, autoRefresh = false) => {
   if (loading.value) {
     return
   }
   const searched = dvMainStore.firstLoadMap.includes(element.value.id)
-  const queryFilter = filter(searched ? false : firstLoad)
+  let queryFilter = filter(searched ? false : firstLoad)
+  if (showPosition.value.includes('viewDialog') || autoRefresh) {
+    queryFilter = dvMainStore.getLastViewRequestInfo(view.value.id)
+  }
   let params = cloneDeep(view.value)
   params['chartExtRequest'] = queryFilter
   chartExtRequest.value = queryFilter
   calcData(params)
-}
+}, 300)
 
 const calcData = params => {
   dvMainStore.setLastViewRequestInfo(params.id, params.chartExtRequest)
@@ -615,7 +636,7 @@ onBeforeMount(() => {
     nextTick(() => {
       useEmitt({
         name: `query-data-${view.value.id}`,
-        callback: queryData
+        callback: queryDataFromSelect
       })
     })
   }
@@ -852,6 +873,12 @@ onMounted(() => {
       chart.container =
         'container-' + showPosition.value + '-' + view.value.id + '-' + suffixId.value
       clearExtremum(chart)
+      // 切换到不支持下钻的图表类型时，清除下钻状态
+      const chartView = chartViewManager.getChartView(view.value.render, view.value.type)
+      if (chartView && !chartView.axis.includes('drill')) {
+        state.drillClickDimensionList = []
+        state.drillFilters = []
+      }
     }
   })
   if (showPosition.value === 'viewDialog') {
@@ -867,6 +894,13 @@ onMounted(() => {
   buildInnerRefreshTimer(refreshViewEnable, refreshUnit, refreshTime)
 
   initTitle()
+})
+
+onBeforeUnmount(() => {
+  if (innerRefreshTimer) {
+    clearInterval(innerRefreshTimer)
+    innerRefreshTimer = null
+  }
 })
 
 // 1.开启仪表板刷新 2.首次加载（searchCount =0 ）3.正在请求数据 则显示加载状态
@@ -904,8 +938,11 @@ const chartAreaShow = computed(() => {
 
 const titleInputRef = ref()
 const titleEditStatus = ref(false)
+const titleEditable = computed(() => {
+  return ['canvas', 'canvasDataV'].includes(showPosition.value) && !props.disabled
+})
 function changeEditTitle() {
-  if (!props.active) {
+  if (!titleEditable.value || !props.active || mobileInPc.value) {
     return
   }
   if (!titleEditStatus.value) {
@@ -949,7 +986,7 @@ function onTitleChange() {
 }
 
 const toolTip = computed(() => {
-  return props.themes === 'dark' ? 'light' : 'dark'
+  return props.themes || 'dark'
 })
 
 const marginBottom = computed<string | 0>(() => {
@@ -965,6 +1002,7 @@ const marginBottom = computed<string | 0>(() => {
 const iconSize = computed<string>(() => {
   return 16 * scale.value + 'px'
 })
+
 /**
  * 修改透明度
  * 边框透明度为0时会是存色，顾配置低透明度
@@ -1100,7 +1138,10 @@ const clearG2Tooltip = () => {
   >
     <div
       class="title-container"
-      :style="{ 'justify-content': titleAlign, 'margin-bottom': marginBottom }"
+      :style="{
+        'justify-content': titleAlign,
+        'margin-bottom': marginBottom
+      }"
     >
       <template v-if="!titleEditStatus">
         <p class="ellipsis" v-if="titleShow" :style="state.title_class" @dblclick="changeEditTitle">
@@ -1120,57 +1161,60 @@ const clearG2Tooltip = () => {
         />
       </template>
       <transition name="fade">
-        <div
-          class="icons-container"
-          :class="{ 'is-editing': titleEditStatus }"
-          :style="titleIconStyle"
-          v-show="showActionIcons"
-        >
-          <el-tooltip :effect="toolTip" placement="top" v-if="state.title_remark.show">
-            <template #content>
-              <div
-                :style="{
-                  maxWidth: titleTooltipWidth,
-                  wordBreak: 'break-all',
-                  wordWrap: 'break-word',
-                  whiteSpace: 'pre-wrap'
-                }"
-                v-html="state.title_remark.remark"
-              ></div>
-            </template>
-            <el-icon :size="iconSize" class="inner-icon">
-              <Icon name="icon_info_outlined"><icon_info_outlined class="svg-icon" /></Icon>
-            </el-icon>
-          </el-tooltip>
-          <el-tooltip :effect="toolTip" placement="top" content="已设置联动" v-if="hasLinkIcon">
-            <el-icon :size="iconSize" class="inner-icon">
-              <Icon name="icon_link-record_outlined"
-                ><icon_linkRecord_outlined class="svg-icon"
-              /></Icon>
-            </el-icon>
-          </el-tooltip>
-          <el-tooltip
-            :effect="toolTip"
-            placement="top"
-            :content="t('visualization.jump_set_tips')"
-            v-if="hasJumpIcon"
+        <div v-show="showActionIcons" class="icons-container-out">
+          <div
+            class="icons-container"
+            :class="{ 'is-editing': titleEditStatus }"
+            :style="titleIconStyle"
           >
-            <el-icon :size="iconSize" class="inner-icon">
-              <Icon name="icon_viewinchat_outlined"
-                ><icon_viewinchat_outlined class="svg-icon"
-              /></Icon>
-            </el-icon>
-          </el-tooltip>
-          <el-tooltip
-            :effect="toolTip"
-            placement="top"
-            :content="t('visualization.drill_set_tips')"
-            v-if="hasDrillIcon"
-          >
-            <el-icon :size="iconSize" class="inner-icon">
-              <Icon name="icon_drilling_outlined"><icon_drilling_outlined class="svg-icon" /></Icon>
-            </el-icon>
-          </el-tooltip>
+            <el-tooltip :effect="toolTip" placement="top" v-if="state.title_remark.show">
+              <template #content>
+                <div
+                  :style="{
+                    maxWidth: titleTooltipWidth,
+                    wordBreak: 'break-all',
+                    wordWrap: 'break-word',
+                    whiteSpace: 'pre-wrap'
+                  }"
+                  v-html="state.title_remark.remark"
+                ></div>
+              </template>
+              <el-icon :size="iconSize" class="inner-icon">
+                <Icon name="icon_info_outlined"><icon_info_outlined class="svg-icon" /></Icon>
+              </el-icon>
+            </el-tooltip>
+            <el-tooltip :effect="toolTip" placement="top" content="已设置联动" v-if="hasLinkIcon">
+              <el-icon :size="iconSize" class="inner-icon">
+                <Icon name="icon_link-record_outlined"
+                  ><icon_linkRecord_outlined class="svg-icon"
+                /></Icon>
+              </el-icon>
+            </el-tooltip>
+            <el-tooltip
+              :effect="toolTip"
+              placement="top"
+              :content="t('visualization.jump_set_tips')"
+              v-if="hasJumpIcon"
+            >
+              <el-icon :size="iconSize" class="inner-icon">
+                <Icon name="icon_viewinchat_outlined"
+                  ><icon_viewinchat_outlined class="svg-icon"
+                /></Icon>
+              </el-icon>
+            </el-tooltip>
+            <el-tooltip
+              :effect="toolTip"
+              placement="top"
+              :content="t('visualization.drill_set_tips')"
+              v-if="hasDrillIcon"
+            >
+              <el-icon :size="iconSize" class="inner-icon">
+                <Icon name="icon_drilling_outlined"
+                  ><icon_drilling_outlined class="svg-icon"
+                /></Icon>
+              </el-icon>
+            </el-tooltip>
+          </div>
         </div>
       </transition>
     </div>
@@ -1317,25 +1361,30 @@ const clearG2Tooltip = () => {
 
   gap: 8px;
 
-  .icons-container {
-    display: inline-flex;
-    flex-direction: row;
-    align-items: center;
-    flex-wrap: nowrap;
-    gap: 8px;
+  .icons-container-out {
+    position: relative;
+    .icons-container {
+      position: absolute;
+      left: 0;
+      display: inline-flex;
+      flex-direction: row;
+      align-items: center;
+      flex-wrap: nowrap;
+      gap: 8px;
 
-    color: #646a73;
+      color: #646a73;
 
-    &.icons-container__dark {
-      color: #a6a6a6;
-    }
+      &.icons-container__dark {
+        color: #a6a6a6;
+      }
 
-    &.is-editing {
-      gap: 6px;
-    }
+      &.is-editing {
+        gap: 6px;
+      }
 
-    .inner-icon {
-      cursor: pointer;
+      .inner-icon {
+        cursor: pointer;
+      }
     }
   }
 }

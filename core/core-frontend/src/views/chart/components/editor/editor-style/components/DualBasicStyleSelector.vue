@@ -223,8 +223,8 @@ onMounted(() => {
               @change="changeBasicStyle('radiusColumnBar')"
               class="radius-class"
             >
-              <el-radio label="rightAngle" :effect="themes">{{ t('chart.rightAngle') }}</el-radio>
-              <el-radio label="roundAngle" :effect="themes">{{ t('chart.roundAngle') }}</el-radio>
+              <el-radio value="rightAngle" :effect="themes">{{ t('chart.rightAngle') }}</el-radio>
+              <el-radio value="roundAngle" :effect="themes">{{ t('chart.roundAngle') }}</el-radio>
               <el-radio
                 v-if="!props.chart.type.includes('-stack')"
                 label="topRoundAngle"
@@ -511,7 +511,7 @@ onMounted(() => {
   .ed-select {
     width: 100px !important;
     :deep(.ed-input__wrapper) {
-      border-radius: 4px 0 0 4px !important;
+      border-radius: 6px 0 0 4px !important;
     }
   }
   .ed-input-group {

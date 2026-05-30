@@ -13,7 +13,6 @@ import io.dataease.api.permissions.dataset.api.ColumnPermissionsApi;
 import io.dataease.api.permissions.dataset.dto.DataSetColumnPermissionsDTO;
 import io.dataease.api.permissions.dataset.dto.DataSetRowPermissionsTreeDTO;
 import io.dataease.auth.bo.TokenUserBO;
-import io.dataease.chart.dao.auto.mapper.CoreChartViewMapper;
 import io.dataease.chart.dao.ext.mapper.ExtChartViewMapper;
 import io.dataease.commons.utils.EncryptUtils;
 import io.dataease.constant.ColumnPermissionConstants;
@@ -72,9 +71,6 @@ public class DatasetSQLBotManage {
     private DataSetAssistantMapper dataSetAssistantMapper;
 
     @Resource
-    private ExtChartViewMapper extChartViewMapper;
-
-    @Resource
     private EngineManage engineManage;
 
     @Resource
@@ -100,6 +96,12 @@ public class DatasetSQLBotManage {
     private String aesIv;
     @Value("${dataease.sqlbot.log:false}")
     private boolean sqlbotApiLog;
+
+    @Value("${dataease.sqlbot.ds-id-fixed:false}")
+    private boolean dsIdFixed;
+
+    @Resource
+    private ExtChartViewMapper extChartViewMapper;
 
     private String aesEncrypt(String text) {
         String iv = aesIv;
@@ -153,10 +155,10 @@ public class DatasetSQLBotManage {
         return datasetRowPermissions.stream().collect(Collectors.groupingBy(DataSetRowPermissionsTreeDTO::getDatasetId));
     }
 
-    public List<DataSQLBotDatasetVO> getDatasetList(String dvInfo){
+
+    public List<DataSQLBotDatasetVO> getDatasetList(String dvInfo) {
         return extChartViewMapper.findDataSQLBotDatasetDvId(dvInfo);
     }
-
 
     public List<DataSQLBotAssistantVO> getDatasourceList(Long dsId, Long datasetId) {
         TokenUserBO user = Objects.requireNonNull(AuthUtils.getUser());
@@ -179,17 +181,11 @@ public class DatasetSQLBotManage {
             if (!isAdmin) {
                 return null;
             }
-            queryWrapper.eq("cdg.is_cross", 0)
-                    .and(wrapper -> wrapper.isNull("cd.STATUS").or().ne("cd.STATUS", "Error"));
             list = dataSetAssistantMapper.queryAll(queryWrapper);
         } else if (!model) {
             if (!isAdmin) {
                 return null;
             }
-            queryWrapper.apply("""
-                not exists( select 1 from user_ds_permissions ds_p where cd.id = ds_p.resource_id )
-                and not exists( select 1 from user_dg_permissions dg_p where cdg.id = dg_p.resource_id )
-            """);
             list = dataSetAssistantMapper.queryCommunity(queryWrapper);
         } else {
             boolean isRootRole = isAdmin;
@@ -365,7 +361,7 @@ public class DatasetSQLBotManage {
             coreDatasource = BeanUtils.mapToBean(dsRowData, CoreDatasource.class);
         }
         try {
-            sqlMap = datasetSQLManage.getUnionSQLForEdit(datasetGroupInfoDTO, null, coreDatasource);
+            sqlMap = datasetSQLManage.getUnionSQLForEdit(datasetGroupInfoDTO, null, coreDatasource, true);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -504,6 +500,11 @@ public class DatasetSQLBotManage {
         field.setType(row.get("cdtf_type").toString());
         field.setComment(row.get("cdtf_name").toString());
         if (ObjectUtils.isNotEmpty(row.get("cdtf_ext_field")) && !row.get("cdtf_ext_field").equals(0)) {
+            Object extName = row.get("cdtf_name");
+            String extNameText = null;
+            if (ObjectUtils.isNotEmpty(extName) && StringUtils.isNotBlank(extNameText = extName.toString())) {
+                field.setName(extNameText);
+            }
             field.setNeedTransform(true);
         }
         Map<String, Object> fieldRowData = buildRowData(row, 3);
@@ -545,7 +546,7 @@ public class DatasetSQLBotManage {
         DataSQLBotAssistantVO vo = new DataSQLBotAssistantVO();
         vo.setDataBase(config.getDataBase());
         vo.setExtraParams(config.getExtraParams());
-        vo.setHost(config.getHost());
+        vo.setHost(dsType.contains(DatasourceConfiguration.DatasourceType.es.name()) ? config.getUrl() : config.getHost());
         vo.setPort(config.getPort());
         vo.setName(row.get("cd_name").toString());
         vo.setComment(ObjectUtils.isEmpty(row.get("cd_description")) ? vo.getName() : row.get("cd_description").toString());
@@ -553,6 +554,10 @@ public class DatasetSQLBotManage {
         vo.setSchema(config.getSchema());
         vo.setUser(config.getUsername());
         vo.setPassword(config.getPassword());
+        vo.setMode(config.getConnectionType());
+        if (dsIdFixed) {
+            vo.setId(Long.parseLong(row.get("cd_id").toString()));
+        }
         row.put("cd_configuration", config_json);
         Map<String, Object> rowData = buildRowData(row, 0);
         rowData.put("id", Long.parseLong(row.get("cd_id").toString()));
@@ -605,6 +610,9 @@ public class DatasetSQLBotManage {
             DatasetTableInfoDTO tableInfoDTO = JsonUtil.parseObject(info, DatasetTableInfoDTO.class);
             if (StringUtils.isNotBlank(tableInfoDTO.getSql())) {
                 String sql = new String(Base64.getDecoder().decode(tableInfoDTO.getSql()));
+                if (StringUtils.isNotBlank(sql) && StringUtils.contains(sql, "$DE_PARAM")) {
+                    table.setNeedTransform(true);
+                }
                 table.setSql(sql);
             }
             if (StringUtils.isBlank(tableInfoDTO.getSql()) && StringUtils.isNotBlank(tableInfoDTO.getTable())) {

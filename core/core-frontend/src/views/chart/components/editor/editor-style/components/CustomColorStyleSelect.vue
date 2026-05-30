@@ -23,8 +23,8 @@ const props = withDefaults(
       customColor: any
       colorIndex: number
     }
-    propertyInner: Array<string>
-    chart: ChartObj
+    propertyInner?: Array<string>
+    chart?: ChartObj
     sub?: boolean
   }>(),
   {
@@ -234,10 +234,10 @@ const changeColorOption = (option?) => {
   }
 }
 const resetCustomColor = () => {
-  const { type } = props.chart
+  const type = props.chart?.type
   const { basicStyleForm } = state.value
 
-  if (type.includes('map')) {
+  if (type?.includes('map')) {
     changeColorOption()
   } else {
     basicStyleForm[seriesColorName.value] = []
@@ -556,8 +556,8 @@ const colorItemBorderColor = (index, state) => {
   margin-top: 30px;
   line-height: 28px;
 
-  border-radius: 4px;
-  border: 1px solid #bbbfc4;
+  border-radius: 6px;
+  border: 1px solid #d9dcdf;
   padding: 0 7px;
   width: 28px;
   height: 28px;

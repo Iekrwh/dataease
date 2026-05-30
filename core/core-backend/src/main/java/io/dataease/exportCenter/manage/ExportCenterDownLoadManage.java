@@ -2,6 +2,7 @@ package io.dataease.exportCenter.manage;
 
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import io.dataease.api.chart.dto.DeSortField;
 import io.dataease.api.chart.dto.ViewDetailField;
 import io.dataease.api.chart.request.ChartExcelRequest;
 import io.dataease.api.chart.request.ChartExcelRequestInner;
@@ -24,10 +25,7 @@ import io.dataease.dataset.dao.auto.mapper.CoreDatasetGroupMapper;
 import io.dataease.dataset.manage.*;
 import io.dataease.datasource.utils.DatasourceUtils;
 import io.dataease.engine.sql.SQLProvider;
-import io.dataease.engine.trans.Field2SQLObj;
-import io.dataease.engine.trans.Order2SQLObj;
-import io.dataease.engine.trans.Table2SQLObj;
-import io.dataease.engine.trans.WhereTree2Str;
+import io.dataease.engine.trans.*;
 import io.dataease.engine.utils.Utils;
 import io.dataease.exception.DEException;
 import io.dataease.exportCenter.dao.auto.entity.CoreExportTask;
@@ -91,6 +89,8 @@ public class ExportCenterDownLoadManage {
     private CoreChartViewMapper coreChartViewMapper;
     @Resource
     private PermissionManage permissionManage;
+    @Resource
+    private DatasetGroupManage datasetGroupManage;
     @Autowired
     private WsService wsService;
     @Autowired(required = false)
@@ -232,8 +232,8 @@ public class ExportCenterDownLoadManage {
                     datasetTableFieldDTO.setFieldShortName(ele.getDataeaseName());
                     return datasetTableFieldDTO;
                 }).collect(Collectors.toList());
-
-                Map<String, Object> sqlMap = datasetSQLManage.getUnionSQLForEdit(dto, null);
+                DatasetGroupInfoDTO datasetGroupInfoDTO = datasetGroupManage.getDatasetGroupInfoDTO(request.getId(), null);
+                Map<String, Object> sqlMap = datasetSQLManage.getUnionSQLForEdit(datasetGroupInfoDTO, null);
                 String sql = (String) sqlMap.get("sql");
                 if (ObjectUtils.isEmpty(allFields)) {
                     DEException.throwException(Translator.get("i18n_no_fields"));
@@ -283,7 +283,17 @@ public class ExportCenterDownLoadManage {
                 Table2SQLObj.table2sqlobj(sqlMeta, null, "(" + sql + ")", crossDs);
                 Field2SQLObj.field2sqlObj(sqlMeta, allFields, allFields, crossDs, dsMap, Utils.getParams(allFields), null, pluginManage);
                 WhereTree2Str.transFilterTrees(sqlMeta, rowPermissionsTree, allFields, crossDs, dsMap, Utils.getParams(allFields), null, pluginManage);
-                Order2SQLObj.getOrders(sqlMeta, dto.getSortFields(), allFields, crossDs, dsMap, Utils.getParams(allFields), null, pluginManage);
+                List<DeSortField> sortFields = new ArrayList<>();
+                for (DatasetTableFieldDTO field : allFields) {
+                    if (field.getOrderChecked()) {
+                        DeSortField sortField = new DeSortField();
+                        BeanUtils.copyBean(sortField, field);
+                        sortField.setOrderDirection("asc");
+                        sortFields.add(sortField);
+                    }
+                }
+                dto.setSortFields(sortFields);
+                DatasetOrder2SQLObj.getOrders(sqlMeta, dto.getSortFields(), allFields);
                 String replaceSql = provider.rebuildSQL(SQLProvider.createQuerySQL(sqlMeta, false, false, false), sqlMeta, crossDs, dsMap);
                 Long totalCount = datasetDataManage.getDatasetTotal(dto, replaceSql, null);
                 Long curLimit = ExportCenterUtils.getExportLimit("dataset");
@@ -380,22 +390,15 @@ public class ExportCenterDownLoadManage {
                                 if (rowData != null) {
                                     for (int j = 0; j < rowData.size(); j++) {
                                         Cell cell = row.createCell(j);
-                                        if (i == 0) {
-                                            cell.setCellValue(rowData.get(j));
-                                            cell.setCellStyle(cellStyle);
-                                            detailsSheet.setColumnWidth(j, 255 * 20);
-                                        } else {
-                                            if ((allFields.get(j).getDeType().equals(DeTypeConstants.DE_INT) || allFields.get(j).getDeType() == DeTypeConstants.DE_FLOAT) && StringUtils.isNotEmpty(rowData.get(j))) {
-                                                try {
-                                                    cell.setCellValue(Double.valueOf(rowData.get(j)));
-                                                } catch (Exception e) {
-                                                    cell.setCellValue(rowData.get(j));
-                                                }
-                                            } else {
+                                        if ((allFields.get(j).getDeType().equals(DeTypeConstants.DE_INT) || allFields.get(j).getDeType() == DeTypeConstants.DE_FLOAT) && StringUtils.isNotEmpty(rowData.get(j))) {
+                                            try {
+                                                cell.setCellValue(Double.valueOf(rowData.get(j)));
+                                            } catch (Exception e) {
                                                 cell.setCellValue(rowData.get(j));
                                             }
+                                        } else {
+                                            cell.setCellValue(rowData.get(j));
                                         }
-
                                     }
                                 }
                             }
@@ -481,45 +484,55 @@ public class ExportCenterDownLoadManage {
                 Sheet detailsSheet;
                 Integer sheetIndex = 1;
                 if ("dataset".equals(request.getDownloadType()) || request.getViewInfo().getType().equalsIgnoreCase("table-info") || request.getViewInfo().getType().equalsIgnoreCase("table-normal")) {
+                    boolean summaryEnabled = !"dataset".equals(request.getDownloadType()) && ChartDataServer.isSummaryEnabled(request.getViewInfo());
+                    ChartDataServer.SummaryConfig summaryConfig = null;
+                    ChartDataServer.SummaryAccumulator summaryAcc = null;
+                    List<ChartViewFieldDTO> allExportColumns = null;
+                    Map<String, java.math.BigDecimal> customSumResult = null;
+                    if (summaryEnabled) {
+                        summaryConfig = ChartDataServer.parseSummaryConfig(request.getViewInfo());
+                        summaryAcc = new ChartDataServer.SummaryAccumulator();
+                        allExportColumns = ChartDataServer.getAllExportColumns(request.getViewInfo());
+                    }
+
                     request.getViewInfo().getChartExtRequest().setPageSize(Long.valueOf(extractPageSize));
                     ChartViewDTO chartViewDTO = chartDataServer.findExcelData(request);
                     for (long i = 1; i < chartViewDTO.getTotalPage() + 1; i++) {
                         request.getViewInfo().getChartExtRequest().setGoPage(i);
                         request.getViewInfo().setExtStack(request.getViewInfo().getExtStack().stream().filter(ele -> !ele.isHide()).collect(Collectors.toList()));
-                        chartDataServer.findExcelData(request);
+                        ChartViewDTO pageDto = chartDataServer.findExcelData(request);
                         details.addAll(request.getDetails());
+
+                        if (summaryEnabled) {
+                            ChartDataServer.accumulatePageStats(summaryAcc, request.getDetails(), allExportColumns, summaryConfig);
+                            if (i == chartViewDTO.getTotalPage() && pageDto.getData() != null && pageDto.getData().get("customSumResult") != null) {
+                                customSumResult = (Map<String, java.math.BigDecimal>) pageDto.getData().get("customSumResult");
+                            }
+                        }
+
                         if (((details.size() + extractPageSize) > sheetLimit) || i == chartViewDTO.getTotalPage()) {
+                            if (i == chartViewDTO.getTotalPage() && summaryEnabled && summaryAcc.totalCount > 0) {
+                                Object[] totalRow = ChartDataServer.buildSummaryRow(allExportColumns, summaryConfig, summaryAcc, customSumResult);
+                                details.add(totalRow);
+                            }
+
                             detailsSheet = wb.createSheet("数据" + sheetIndex);
                             Integer[] excelTypes = request.getExcelTypes();
                             ViewDetailField[] detailFields = request.getDetailFields();
-                            Object[] header = request.getHeader();
-                            List<ChartViewFieldDTO> xAxis = new ArrayList<>();
-                            xAxis.addAll(request.getViewInfo().getXAxis());
-                            xAxis.addAll(request.getViewInfo().getYAxis());
-                            xAxis.addAll(request.getViewInfo().getXAxisExt());
-                            xAxis.addAll(request.getViewInfo().getYAxisExt());
-                            xAxis.addAll(request.getViewInfo().getExtStack());
-                            xAxis.addAll(request.getViewInfo().getDrillFields());
-                            header = Arrays.stream(request.getHeader()).filter(item -> xAxis.stream().map(d -> StringUtils.isNotBlank(d.getChartShowName()) ? d.getChartShowName() : d.getName()).toList().contains(item)).toArray();
+                            Object[] header = ChartDataServer.filterExportHeader(request.getHeader(), request.getViewInfo());
                             details.add(0, header);
-                            List<Integer> columnIndexs = new ArrayList<>();
-                            for (int i1 = 0; i1 < xAxis.size(); i1++) {
-                                ChartViewFieldDTO xAxi = xAxis.get(i1);
-                                if (xAxi.isHide()) {
-                                    columnIndexs.add(i1);
-                                }
-                            }
+                            List<Integer> columnIndexs = ChartDataServer.getHiddenExportColumnIndexes(header, request.getViewInfo());
                             removeColumn(details, columnIndexs);
                             ChartDataServer.setExcelData(detailsSheet, cellStyle, header, details, detailFields, excelTypes, request.getViewInfo(), wb);
                             sheetIndex++;
                             details.clear();
-                            exportTask.setExportStatus("IN_PROGRESS");
-                            double exportProgress = (double) (i / (chartViewDTO.getTotalPage() + 1));
-                            DecimalFormat df = new DecimalFormat("#.##");
-                            String formattedResult = df.format((exportProgress) * 100);
-                            exportTask.setExportProgress(formattedResult);
-                            exportTaskMapper.updateById(exportTask);
                         }
+                        exportTask.setExportStatus("IN_PROGRESS");
+                        double exportProgress = (double) ((double) i / (chartViewDTO.getTotalPage()));
+                        DecimalFormat df = new DecimalFormat("#.##");
+                        String formattedResult = df.format((exportProgress) * 100);
+                        exportTask.setExportProgress(formattedResult);
+                        exportTaskMapper.updateById(exportTask);
                     }
                 } else {
                     downloadNotTableInfoData(request, wb);
@@ -668,8 +681,8 @@ public class ExportCenterDownLoadManage {
                 datasetTableFieldDTO.setFieldShortName(ele.getDataeaseName());
                 return datasetTableFieldDTO;
             }).collect(Collectors.toList());
-
-            Map<String, Object> sqlMap = datasetSQLManage.getUnionSQLForEdit(dto, null);
+            DatasetGroupInfoDTO datasetGroupInfoDTO = datasetGroupManage.getDatasetGroupInfoDTO(request.getId(), null);
+            Map<String, Object> sqlMap = datasetSQLManage.getUnionSQLForEdit(datasetGroupInfoDTO, null);
             String sql = (String) sqlMap.get("sql");
             if (ObjectUtils.isEmpty(allFields)) {
                 DEException.throwException(Translator.get("i18n_no_fields"));
@@ -849,4 +862,3 @@ public class ExportCenterDownLoadManage {
         }
     }
 }
-

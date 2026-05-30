@@ -55,7 +55,7 @@
                   }})</span
                 >
                 <span v-show="state.templateFilterText">
-                  <span style="color: #3370ff">{{ state.templateFilterText }}&nbsp;&nbsp;</span>
+                  <span class="svg-primary-color">{{ state.templateFilterText }}&nbsp;&nbsp;</span>
                   <span
                     >{{ t('template_manage.search_result') }}&nbsp;{{
                       currentTemplateShowListComputed.length
@@ -611,6 +611,8 @@ onMounted(() => {
     width: 269px;
     border-right: 1px solid rgba(31, 35, 41, 0.15);
     padding: 12px 8px;
+    border-top-left-radius: 12px;
+    border-bottom-left-radius: 12px;
   }
 
   .de-tabs-right {
@@ -618,6 +620,8 @@ onMounted(() => {
     overflow: hidden;
     background: rgba(239, 240, 241, 1);
     position: relative;
+    border-top-right-radius: 12px;
+    border-bottom-right-radius: 12px;
 
     .template-box {
       display: flex;

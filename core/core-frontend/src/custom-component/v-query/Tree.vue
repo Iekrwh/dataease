@@ -9,16 +9,22 @@ import {
   computed,
   inject,
   Ref,
+  onBeforeMount,
   shallowRef
 } from 'vue'
-import { cloneDeep, debounce } from 'lodash-es'
+import { useEmitt } from '@/hooks/web/useEmitt'
+import { cloneDeep, debounce, sortBy } from 'lodash-es'
 import { getFieldTree } from '@/api/dataset'
 import colorFunctions from 'less/lib/less/functions/color.js'
 import colorTree from 'less/lib/less/tree/color.js'
 import { colorStringToHex } from '@/utils/color'
+import { ElMessage } from 'element-plus-secondary'
+import { useI18n } from '@/hooks/web/useI18n'
+const { t } = useI18n()
 
 interface SelectConfig {
   selectValue: any
+  required: false
   defaultMapValue: any
   defaultValue: any
   queryConditionWidth: number
@@ -37,9 +43,11 @@ interface SelectConfig {
   }
   defaultValueCheck: boolean
   multiple: boolean
+  optionFilter: []
 }
 
 const customStyle: any = inject('$custom-style-filter')
+const cascadeList = inject('cascade-list', Function, true)
 const props = defineProps({
   config: {
     type: Object as PropType<SelectConfig>,
@@ -47,13 +55,15 @@ const props = defineProps({
       return {
         selectValue: '',
         defaultValue: '',
+        required: false,
         queryConditionWidth: 0,
         displayType: '',
         resultMode: 0,
         defaultValueCheck: false,
         multiple: false,
         checkedFieldsMap: {},
-        treeFieldList: []
+        treeFieldList: [],
+        optionFilter: []
       }
     }
   },
@@ -121,7 +131,7 @@ watch(
   }
 )
 
-const init = () => {
+const init = (fromMount = false) => {
   loading.value = true
   const { defaultValueCheck, multiple: plus, defaultValue } = config.value
   if (defaultValueCheck) {
@@ -137,6 +147,8 @@ const init = () => {
     oldId = config.value.treeFieldList?.map(ele => ele.id).join('-')
     multiple.value = config.value.multiple
   })
+  if (getCascadeFieldId().some(ele => ele.defaultValueFirstItem) && fromMount && !props.isConfig)
+    return
   getTreeOption()
 }
 
@@ -155,6 +167,7 @@ const tagTextWidth = computed(() => {
 const showOrHide = ref(true)
 const queryConditionWidth = inject('com-width', Function, true)
 const isConfirmSearch = inject('is-confirm-search', Function, true)
+const isConfirmSearchNoRequiredName = inject('query-data-for-id-tree', Function, true)
 watch(
   () => config.value.id,
   () => {
@@ -163,7 +176,8 @@ watch(
 )
 onMounted(() => {
   setTimeout(() => {
-    init()
+    fromSelect = true
+    init(true)
   }, 0)
 })
 
@@ -226,30 +240,169 @@ let cacheId = ''
 let treeOptionList = shallowRef([])
 const filterMethod = (value, data) =>
   (data.label ?? '').toLowerCase().includes((value ?? '').toLowerCase())
+
 const dfs = arr => {
-  return (arr || []).map(ele => {
-    let children = []
-    if (!!ele.children?.length) {
-      children = dfs(ele.children)
+  const mapped = (arr || []).map(ele => {
+    const label = ele.text
+    const children = ele.children?.length ? dfs(ele.children) : []
+    return { ...ele, value: ele.id, label, children }
+  })
+  return sortBy(mapped, node => (node.label ?? '').toLowerCase())
+}
+const cascade = computed(() => {
+  return cascadeList() || []
+})
+const loading = ref(false)
+
+const getCascadeFieldId = () => {
+  const filter = []
+  cascade.value.forEach(ele => {
+    let condition = null
+    ele.forEach(item => {
+      const [_, queryId, fieldId] = item.datasetId.split('--')
+      const defaultValueFirstItem = item.defaultValueFirstItem
+      if (queryId === config.value.id && condition) {
+        if (item.fieldId) {
+          condition.fieldId = item.fieldId
+        }
+        filter.push(condition)
+      } else {
+        if (props.isConfig) {
+          if (!!item.selectValue?.length) {
+            condition = {
+              fieldId,
+              defaultValueFirstItem,
+              operator: 'in',
+              value: [...item.selectValue]
+            }
+          }
+        } else {
+          if (!!item.currentSelectValue?.length) {
+            condition = {
+              fieldId,
+              defaultValueFirstItem,
+              operator: 'in',
+              value: [...item.currentSelectValue]
+            }
+          }
+        }
+      }
+    })
+  })
+  return filter
+}
+
+let fromSelect = false
+const getOptionFromCascade = () => {
+  fromSelect = true
+  getTreeOption()
+}
+
+onBeforeMount(() => {
+  useEmitt({
+    name: `${config.value.id}-select`,
+    callback: getOptionFromCascade
+  })
+})
+
+const dfsAuth = (tree, val) => {
+  return tree.some(ele => {
+    if (ele.value === val) {
+      return true
     }
-    return { ...ele, value: ele.id, label: ele.text, children }
+
+    if (ele.children?.length) {
+      return dfsAuth(ele.children, val)
+    }
+
+    return false
   })
 }
 
-const loading = ref(false)
+function containsNodeById(source, params) {
+  // 统一处理参数为数组
+  const searchIds = Array.isArray(params) ? params : [params]
+
+  // 递归搜索函数
+  function searchById(node) {
+    // 检查当前节点的id是否在搜索列表中
+    if (searchIds.includes(node.id)) {
+      return true
+    }
+
+    // 递归搜索子节点
+    if (node.children && node.children.length > 0) {
+      for (const child of node.children) {
+        if (searchById(child)) {
+          return true
+        }
+      }
+    }
+
+    return false
+  }
+
+  // 遍历所有根节点
+  for (const node of source) {
+    if (searchById(node)) {
+      return true
+    }
+  }
+
+  return false
+}
 
 const getTreeOption = debounce(() => {
   loading.value = true
   getFieldTree({
     fieldIds: props.config.treeFieldList.map(ele => ele.id),
-    resultMode: config.value.resultMode || 0
+    resultMode: config.value.resultMode || 0,
+    filter: getCascadeFieldId()
   })
     .then(res => {
-      treeOptionList.value = dfs(res)
+      treeOptionList.value = filterTree(dfs(res), config.value.optionFilter)
+      if (config.value?.required && config.value?.optionFilter?.length > 0) {
+        const isValid = containsNodeById(treeOptionList.value, config.value.selectValue)
+        if (!isValid) {
+          config.value.selectValue = null
+          ElMessage({
+            message: `【${config.value?.name}】${t('v_query.before_querying')}`,
+            type: 'error',
+            duration: 3000
+          })
+        }
+      }
+
+      if (fromSelect) {
+        fromTreeSelectConfirm.value = true
+        if (multiple.value && Array.isArray(treeValue.value) && treeValue.value.length) {
+          treeValue.value = treeValue.value.filter(ele => dfsAuth(treeOptionList.value, ele))
+        } else if (treeValue.value && !dfsAuth(treeOptionList.value, treeValue.value)) {
+          treeValue.value = undefined
+        } else {
+          fromSelect = false
+          fromTreeSelectConfirm.value = false
+        }
+
+        if (fromSelect) {
+          config.value.selectValue = Array.isArray(treeValue.value)
+            ? [...treeValue.value]
+            : treeValue.value
+          config.value.defaultValue = config.value.selectValue
+
+          if (props.isConfig) return
+
+          nextTick(() => {
+            fromTreeSelectConfirm.value = false
+            isConfirmSearchNoRequiredName(config.value.id)
+          })
+        }
+      }
     })
     .finally(() => {
       loading.value = false
       showWholePath.value = true
+      fromSelect = false
     })
 }, 300)
 watch(
@@ -293,6 +446,95 @@ const tagColor = computed(() => {
     .mix(new colorTree('ffffff'), new colorTree(hexColor.substr(1)), { value: 20 })
     .toRGB()
 })
+
+function filterTree(treeData, filterIds) {
+  if (!filterIds || filterIds.length === 0) {
+    return treeData
+  }
+  const filterSet = new Set(filterIds)
+
+  // 用于存储最终保留的所有节点ID
+  const keepIds = new Set()
+
+  // 用于查找节点的Map
+  const nodeMap = new Map()
+  // 用于构建节点关系的Map（子节点到父节点）
+  const parentMap = new Map()
+
+  // 遍历所有节点，构建Map和父子关系
+  function traverse(nodes, parentId = null) {
+    for (const node of nodes) {
+      nodeMap.set(node.id, node)
+      if (parentId) {
+        parentMap.set(node.id, parentId)
+      }
+
+      // 递归处理子节点
+      if (node.children && node.children.length > 0) {
+        traverse(node.children, node.id)
+      }
+    }
+  }
+
+  // 收集所有匹配的节点及其祖先和后代
+  function collectRelatedNodes(nodeId) {
+    if (keepIds.has(nodeId)) return
+
+    keepIds.add(nodeId)
+    const node = nodeMap.get(nodeId)
+
+    // 1. 收集所有祖先节点
+    let currentId = nodeId
+    while (parentMap.has(currentId)) {
+      const parentId = parentMap.get(currentId)
+      keepIds.add(parentId)
+      currentId = parentId
+    }
+
+    // 2. 收集所有后代节点（递归）
+    function collectDescendants(node) {
+      if (node.children && node.children.length > 0) {
+        for (const child of node.children) {
+          keepIds.add(child.id)
+          collectDescendants(child)
+        }
+      }
+    }
+    collectDescendants(node)
+  }
+
+  // 第二步：递归构建过滤后的树
+  function buildFilteredTree(nodes) {
+    const result = []
+
+    for (const node of nodes) {
+      // 如果节点ID在保留集合中，则保留该节点
+      if (keepIds.has(node.id)) {
+        const newNode = { ...node }
+
+        // 递归处理子节点
+        if (newNode.children && newNode.children.length > 0) {
+          newNode.children = buildFilteredTree(newNode.children)
+        }
+
+        result.push(newNode)
+      }
+    }
+
+    return result
+  }
+
+  // 执行遍历和构建
+  traverse(treeData)
+
+  for (const filterId of filterIds) {
+    if (nodeMap.has(filterId)) {
+      collectRelatedNodes(filterId)
+    }
+  }
+
+  return buildFilteredTree(treeData)
+}
 </script>
 
 <template>

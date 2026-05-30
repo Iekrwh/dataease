@@ -49,7 +49,7 @@
               <iconFilter />
             </el-icon>
           </el-row>
-          <el-row v-show="state.extFilterActive">
+          <el-row style="width: 100%" v-show="state.extFilterActive">
             <el-select
               v-model="state.templateType"
               style="margin-top: 8px"
@@ -63,7 +63,7 @@
               />
             </el-select>
           </el-row>
-          <el-row v-show="state.extFilterActive">
+          <el-row style="width: 100%" v-show="state.extFilterActive">
             <el-select
               v-model="state.templateSourceType"
               style="margin-top: 8px"
@@ -397,7 +397,7 @@ onMounted(() => {
 }
 
 .template-main {
-  border-radius: 4px;
+  border-radius: 6px;
   box-shadow: 0 0 2px 0 rgba(31, 31, 31, 0.15), 0 1px 2px 0 rgba(31, 31, 31, 0.15);
   border: solid 2px #fff;
   padding-bottom: 24px;
@@ -609,7 +609,7 @@ onMounted(() => {
 }
 .img-main {
   display: inherit;
-  //border-radius: 4px;
+  //border-radius: 6px;
   background: #0f1114;
   overflow-x: auto;
   overflow-y: hidden;
@@ -641,10 +641,10 @@ onMounted(() => {
 }
 .filter-icon-span {
   float: left;
-  border: 1px solid #bbbfc4;
+  border: 1px solid #d9dcdf;
   width: 32px;
   height: 32px;
-  border-radius: 4px;
+  border-radius: 6px;
   padding: 7px;
   margin-left: 8px;
 }
@@ -685,7 +685,7 @@ onMounted(() => {
     height: 100%;
     transform: translate(-50%, -50%);
     display: none;
-    border-radius: 4px;
+    border-radius: 6px;
   }
 
   &:hover {
@@ -699,7 +699,7 @@ onMounted(() => {
   &:active {
     color: #245bdb;
     &::after {
-      background: #3370ff33;
+      background-color: var(--ed-color-primary-33, #3370ff33);
       display: block;
     }
   }

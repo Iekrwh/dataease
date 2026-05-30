@@ -35,7 +35,7 @@ const state = reactive({
   axisForm: JSON.parse(JSON.stringify(DEFAULT_XAXIS_STYLE))
 })
 const toolTip = computed(() => {
-  return props.themes === 'dark' ? 'light' : 'dark'
+  return props.themes || 'dark'
 })
 const emit = defineEmits(['onChangeXAxisForm'])
 
@@ -118,6 +118,20 @@ const init = () => {
 
 const showProperty = prop => props.propertyInner?.includes(prop)
 
+const isMultiScatterTimeXAxis = computed<boolean>(() => {
+  if (props.chart.type !== 'multi-scatter') {
+    return false
+  }
+  const xAxis = props.chart.xAxis?.[0]
+  return !!xAxis && (xAxis.groupType === 'd' || (xAxis.deType != null && xAxis.deType === 1))
+})
+
+const showAxisLabelFormatter = computed(() => {
+  return (
+    showProperty('axisLabelFormatter') && !isBarRangeTime.value && !isMultiScatterTimeXAxis.value
+  )
+})
+
 const isBidirectionalBar = computed(() => {
   return props.chart.type === 'bidirectional-bar'
 })
@@ -155,30 +169,30 @@ onMounted(() => {
         @change="changeAxisStyle('position')"
       >
         <div v-if="isBidirectionalBar">
-          <el-radio :effect="props.themes" label="top">{{
+          <el-radio :effect="props.themes" value="top">{{
             isHorizontalLayout ? t('chart.text_pos_left') : t('chart.text_pos_top')
           }}</el-radio>
-          <el-radio :effect="props.themes" label="bottom">{{
+          <el-radio :effect="props.themes" value="bottom">{{
             t('chart.text_pos_center')
           }}</el-radio>
         </div>
         <div v-else-if="isBulletGraph">
           <div v-if="isHorizontalLayout">
-            <el-radio :effect="props.themes" label="bottom">{{
+            <el-radio :effect="props.themes" value="bottom">{{
               t('chart.text_pos_left')
             }}</el-radio>
-            <el-radio :effect="props.themes" label="top">{{ t('chart.text_pos_right') }}</el-radio>
+            <el-radio :effect="props.themes" value="top">{{ t('chart.text_pos_right') }}</el-radio>
           </div>
           <div v-else>
-            <el-radio :effect="props.themes" label="top">{{ t('chart.text_pos_top') }}</el-radio>
-            <el-radio :effect="props.themes" label="bottom">{{
+            <el-radio :effect="props.themes" value="top">{{ t('chart.text_pos_top') }}</el-radio>
+            <el-radio :effect="props.themes" value="bottom">{{
               t('chart.text_pos_bottom')
             }}</el-radio>
           </div>
         </div>
         <div v-else>
-          <el-radio :effect="props.themes" label="top">{{ t('chart.text_pos_top') }}</el-radio>
-          <el-radio :effect="props.themes" label="bottom">{{
+          <el-radio :effect="props.themes" value="top">{{ t('chart.text_pos_top') }}</el-radio>
+          <el-radio :effect="props.themes" value="bottom">{{
             t('chart.text_pos_bottom')
           }}</el-radio>
         </div>
@@ -522,7 +536,23 @@ onMounted(() => {
           @change="changeAxisStyle('axisLabel.rotate')"
         />
       </el-form-item>
-
+      <el-form-item
+        class="form-item"
+        :class="'form-item-' + themes"
+        :label="t('chart.length_limit')"
+        v-if="showProperty('showLengthLimit')"
+      >
+        <el-input-number
+          :disabled="!state.axisForm.axisLabel.show"
+          style="width: 100%"
+          :effect="props.themes"
+          v-model="state.axisForm.axisLabel.lengthLimit"
+          :min="1"
+          size="small"
+          controls-position="right"
+          @change="changeAxisStyle('axisLabel.lengthLimit')"
+        />
+      </el-form-item>
       <el-form-item
         class="form-item"
         :class="'form-item-' + themes"
@@ -540,7 +570,7 @@ onMounted(() => {
           @change="changeAxisStyle('axisLabel.lengthLimit')"
         />
       </el-form-item>
-      <template v-if="showProperty('axisLabelFormatter') && !isBarRangeTime">
+      <template v-if="showAxisLabelFormatter">
         <el-form-item
           class="form-item"
           :class="'form-item-' + themes"

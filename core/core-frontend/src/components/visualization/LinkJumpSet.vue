@@ -93,12 +93,12 @@
                     v-if="state.linkJumpInfo"
                     v-model="state.linkJumpInfo.linkType"
                   >
-                    <el-radio label="outer">{{ t('visualization.link_outer') }}</el-radio>
-                    <el-radio label="inner">{{ t('visualization.dashboard_dataV') }}</el-radio>
+                    <el-radio value="outer">{{ t('visualization.link_outer') }}</el-radio>
+                    <el-radio value="inner">{{ t('visualization.dashboard_dataV') }}</el-radio>
                   </el-radio-group>
                   <el-radio-group class="larger-radio" v-if="!state.linkJumpInfo" disabled>
-                    <el-radio label="outer">{{ t('visualization.link_outer') }}</el-radio>
-                    <el-radio label="inner">{{ resourceType }}</el-radio>
+                    <el-radio value="outer">{{ t('visualization.link_outer') }}</el-radio>
+                    <el-radio value="inner">{{ resourceType }}</el-radio>
                   </el-radio-group>
                 </el-form-item>
                 <el-form-item class="radio-group-box">
@@ -110,14 +110,14 @@
                     v-if="state.linkJumpInfo"
                     v-model="state.linkJumpInfo.jumpType"
                   >
-                    <el-radio label="_self">{{ t('visualization.now_window') }}</el-radio>
-                    <el-radio label="_blank">{{ t('visualization.new_window') }}</el-radio>
-                    <el-radio label="newPop">{{ t('visualization.pop_window') }}</el-radio>
+                    <el-radio value="_self">{{ t('visualization.now_window') }}</el-radio>
+                    <el-radio value="_blank">{{ t('visualization.new_window') }}</el-radio>
+                    <el-radio value="newPop">{{ t('visualization.pop_window') }}</el-radio>
                   </el-radio-group>
                   <el-radio-group class="larger-radio" v-if="!state.linkJumpInfo" disabled>
-                    <el-radio label="_self">{{ t('visualization.now_window') }}</el-radio>
-                    <el-radio label="_blank">{{ t('visualization.new_window') }}</el-radio>
-                    <el-radio label="newPop">{{ t('visualization.pop_window') }}</el-radio>
+                    <el-radio value="_self">{{ t('visualization.now_window') }}</el-radio>
+                    <el-radio value="_blank">{{ t('visualization.new_window') }}</el-radio>
+                    <el-radio value="newPop">{{ t('visualization.pop_window') }}</el-radio>
                   </el-radio-group>
                 </el-form-item>
 
@@ -129,9 +129,9 @@
                     <span class="title">{{ t('visualization.window_size') }}</span>
                   </template>
                   <el-radio-group class="larger-radio" v-model="state.linkJumpInfo.windowSize">
-                    <el-radio label="large">{{ t('visualization.window_size_large') }}</el-radio>
-                    <el-radio label="middle">{{ t('visualization.window_size_middle') }}</el-radio>
-                    <el-radio label="small">{{ t('visualization.window_size_small') }}</el-radio>
+                    <el-radio value="large">{{ t('visualization.window_size_large') }}</el-radio>
+                    <el-radio value="middle">{{ t('visualization.window_size_middle') }}</el-radio>
+                    <el-radio value="small">{{ t('visualization.window_size_small') }}</el-radio>
                   </el-radio-group>
                 </el-form-item>
               </el-header>
@@ -744,7 +744,18 @@ const { wsCache } = useCache()
 
 const outerContentEditor = ref(null)
 
+const resetParams = () => {
+  state.linkJump = null
+  state.linkJumpInfoArray = []
+  state.linkJumpInfoXArray = []
+  state.linkJumpCurViewFieldArray = []
+  state.linkJumpCurFilterFieldArray = []
+  state.mapJumpInfoArray = {}
+  state.linkJumpInfo = null
+}
+
 const dialogInit = viewItem => {
+  resetParams()
   state.showSelected = false
   dialogShow.value = true
   state.initState = false
@@ -803,6 +814,15 @@ const init = viewItem => {
   ) {
     checkJumpStr =
       checkAllAxisStr + JSON.stringify(chartDetails.yAxis) + JSON.stringify(chartDetails.yAxisExt)
+  } else if (chartDetails.type === 'multi-scatter') {
+    // 多维散点图跳转字段只列出维度，引用字段可选所有轴字段
+    const multiScatterExtra =
+      JSON.stringify(chartDetails.yAxis || []) +
+      JSON.stringify(chartDetails.extColor || []) +
+      JSON.stringify(chartDetails.extBubble || []) +
+      JSON.stringify(chartDetails.yAxisExt || [])
+    checkAllAxisStr = checkAllAxisStr + multiScatterExtra
+    checkJumpStr = JSON.stringify(chartDetails.extColor || [])
   } else {
     checkJumpStr = checkAllAxisStr
   }
@@ -913,6 +933,9 @@ const save = () => {
     })
 }
 const nodeClick = data => {
+  if (!data) {
+    return
+  }
   state.linkJumpInfo = state.mapJumpInfoArray[data.sourceFieldId]
   if (!state.linkJumpInfo.windowSize) {
     state.linkJumpInfo.windowSize = 'middle'
@@ -1128,7 +1151,7 @@ defineExpose({
 .preview {
   margin-top: 5px;
   border: 1px solid #e6e6e6;
-  border-radius: 4px;
+  border-radius: 6px;
   height: 470px !important;
   overflow: hidden;
   background-size: 100% 100% !important;
@@ -1262,7 +1285,7 @@ defineExpose({
   white-space: nowrap;
   text-overflow: ellipsis;
 
-  border-radius: 4px;
+  border-radius: 6px;
   border: 1px solid #dee0e3;
 
   background: #fff;
@@ -1460,13 +1483,13 @@ span {
 
 .outer-content {
   height: 340px;
-  border-radius: 4px;
+  border-radius: 6px;
 }
 
 .padding-lr {
   height: 500px;
   border: 1px solid var(--deCardStrokeColor, #dee0e3);
-  border-radius: 4px;
+  border-radius: 6px;
   padding: 12px;
   box-sizing: border-box;
   margin-left: 12px;
@@ -1497,8 +1520,8 @@ span {
   color: var(--deTextDisable);
 }
 .outer-content-mirror {
-  border: 1px solid #bbbfc4;
-  border-radius: 4px;
+  border: 1px solid #d9dcdf;
+  border-radius: 6px;
   height: calc(100% - 30px);
   width: 100%;
   overflow: hidden;
@@ -1516,8 +1539,8 @@ span {
 }
 
 .outer-content-right {
-  border: 1px solid #bbbfc4;
-  border-radius: 4px;
+  border: 1px solid #d9dcdf;
+  border-radius: 6px;
   height: calc(100% - 30px);
   width: 100%;
   padding: 12px;

@@ -18,7 +18,7 @@ import ApiHttpRequestDraw from './ApiHttpRequestDraw.vue'
 import type { Configuration, ApiConfiguration, SyncSetting } from './option'
 import { fieldType, fieldTypeText } from '@/utils/attr'
 import { Icon } from '@/components/icon-custom'
-import { getSchema } from '@/api/datasource'
+import { getSchema, previewCronNextTimes } from '@/api/datasource'
 import { Base64 } from 'js-base64'
 import { CustomPassword } from '@/components/custom-password'
 import { ElForm, ElMessage, ElMessageBox } from 'element-plus-secondary'
@@ -27,6 +27,7 @@ import { ComponentPublicInstance } from 'vue'
 import { XpackComponent } from '@/components/plugin'
 import { iconFieldMap } from '@/components/icon-group/field-list'
 import { boolean } from 'mathjs'
+import dayjs from 'dayjs'
 const { t } = useI18n()
 const prop = defineProps({
   form: {
@@ -83,7 +84,17 @@ const state = reactive({
 
 const schemas = ref([])
 const targetCharset = ref(['GBK', 'UTF-8'])
-const charset = ref(['GBK', 'BIG5', 'ISO-8859-1', 'UTF-8', 'UTF-16', 'CP850', 'EUC_JP', 'EUC_KR'])
+const charset = ref([
+  'US7ASCII',
+  'GBK',
+  'BIG5',
+  'ISO-8859-1',
+  'UTF-8',
+  'UTF-16',
+  'CP850',
+  'EUC_JP',
+  'EUC_KR'
+])
 
 const loading = ref(false)
 const dsForm = ref<FormInstance>()
@@ -156,9 +167,12 @@ const initForm = (type, pluginDsList, indexPlugin, isPluginDs) => {
       host: '',
       authMethod: '',
       port: '',
-      initialPoolSize: 5,
-      minPoolSize: 5,
-      maxPoolSize: 5,
+      sslCA: '',
+      sslCert: '',
+      sslKey: '',
+      initialPoolSize: 50,
+      minPoolSize: 50,
+      maxPoolSize: 100,
       queryTimeout: 30
     }
     schemas.value = []
@@ -243,6 +257,35 @@ const validateSshkey = (_: any, value: any, callback: any) => {
     callback(new Error(t('data_source.cannot_be_empty_de_key')))
   }
   return callback()
+}
+
+const handleSSLFileChange = (e: Event, field: 'sslCA' | 'sslCert' | 'sslKey') => {
+  const target = e.target as HTMLInputElement
+  const file = target?.files?.[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = event => {
+    form.value.configuration[field] = (event.target?.result as string) || ''
+  }
+  reader.onerror = () => {
+    ElMessage.error(t('datasource.ck_ssl_read_failed'))
+  }
+  reader.readAsText(file)
+  target.value = ''
+}
+
+const sslCAInput = ref<HTMLInputElement>()
+const sslCertInput = ref<HTMLInputElement>()
+const sslKeyInput = ref<HTMLInputElement>()
+
+const chooseSSLFile = (field: 'sslCA' | 'sslCert' | 'sslKey') => {
+  if (field === 'sslCA') {
+    sslCAInput.value?.click()
+  } else if (field === 'sslCert') {
+    sslCertInput.value?.click()
+  } else {
+    sslKeyInput.value?.click()
+  }
 }
 
 const setRules = () => {
@@ -518,6 +561,9 @@ const returnItem = apiItem => {
 }
 
 const showCron = ref(false)
+const cronPreviewVisible = ref(false)
+const cronPreviewLoading = ref(false)
+const cronPreviewTimes = ref<string[]>([])
 
 const onRateChange = () => {
   if (form.value.syncSetting.syncRate === 'SIMPLE') {
@@ -562,6 +608,43 @@ const onSimpleCronChange = () => {
     form.value.syncSetting.cron = '0 0 0 1/' + form.value.syncSetting.simpleCronValue + ' * ? *'
     return
   }
+}
+
+const normalizeTimeValue = value => {
+  if (value === undefined || value === null || value === '') {
+    return undefined
+  }
+  const time = new Date(value).getTime()
+  return Number.isNaN(time) ? undefined : time
+}
+
+const cronPreviewRows = computed(() => {
+  return cronPreviewTimes.value.map((time, index) => ({
+    index: index + 1,
+    time
+  }))
+})
+
+const previewNextCronTimes = () => {
+  if (!form.value.syncSetting?.cron?.trim()) {
+    dsApiForm.value?.validateField('syncSetting.cron')
+    return
+  }
+  cronPreviewLoading.value = true
+  previewCronNextTimes({
+    cron: form.value.syncSetting.cron,
+    startTime: normalizeTimeValue(form.value.syncSetting.startTime) ?? Date.now(),
+    endTime: normalizeTimeValue(form.value.syncSetting.endTime)
+  })
+    .then(res => {
+      cronPreviewTimes.value = (res || []).map(time =>
+        dayjs(Number(time)).format('YYYY-MM-DD HH:mm:ss')
+      )
+      cronPreviewVisible.value = true
+    })
+    .finally(() => {
+      cronPreviewLoading.value = false
+    })
 }
 
 const showSchema = ref(false)
@@ -1013,8 +1096,8 @@ defineExpose({
             v-if="form.type !== 'es'"
           >
             <el-radio-group v-model="form.configuration.urlType">
-              <el-radio label="hostName">{{ t('data_source.hostname') }}</el-radio>
-              <el-radio label="jdbcUrl">{{ t('data_source.jdbc_connection') }}</el-radio>
+              <el-radio value="hostName">{{ t('data_source.hostname') }}</el-radio>
+              <el-radio value="jdbcUrl">{{ t('data_source.jdbc_connection') }}</el-radio>
             </el-radio-group>
           </el-form-item>
 
@@ -1206,6 +1289,65 @@ defineExpose({
               autocomplete="off"
             />
           </el-form-item>
+          <template v-if="form.type === 'ck'">
+            <el-form-item :label="t('datasource.ck_ssl_ca')">
+              <input
+                ref="sslCAInput"
+                type="file"
+                accept=".pem,.crt,.cer"
+                style="display: none"
+                @change="e => handleSSLFileChange(e, 'sslCA')"
+              />
+              <el-button secondary @click="chooseSSLFile('sslCA')">
+                {{ t('datasource.ck_ssl_upload') }}
+              </el-button>
+              <span class="ml8">{{ t('datasource.ck_ssl_upload_hint') }}</span>
+              <el-input
+                type="textarea"
+                :rows="3"
+                v-model="form.configuration.sslCA"
+                :placeholder="t('datasource.ck_ssl_pem_placeholder')"
+              />
+            </el-form-item>
+            <el-form-item :label="t('datasource.ck_ssl_client_cert')">
+              <input
+                ref="sslCertInput"
+                type="file"
+                accept=".pem,.crt,.cer"
+                style="display: none"
+                @change="e => handleSSLFileChange(e, 'sslCert')"
+              />
+              <el-button secondary @click="chooseSSLFile('sslCert')">
+                {{ t('datasource.ck_ssl_upload') }}
+              </el-button>
+              <span class="ml8">{{ t('datasource.ck_ssl_upload_hint') }}</span>
+              <el-input
+                type="textarea"
+                :rows="3"
+                v-model="form.configuration.sslCert"
+                :placeholder="t('datasource.ck_ssl_pem_placeholder')"
+              />
+            </el-form-item>
+            <el-form-item :label="t('datasource.ck_ssl_client_key')">
+              <input
+                ref="sslKeyInput"
+                type="file"
+                accept=".pem,.key"
+                style="display: none"
+                @change="e => handleSSLFileChange(e, 'sslKey')"
+              />
+              <el-button secondary @click="chooseSSLFile('sslKey')">
+                {{ t('datasource.ck_ssl_upload') }}
+              </el-button>
+              <span class="ml8">{{ t('datasource.ck_ssl_upload_hint') }}</span>
+              <el-input
+                type="textarea"
+                :rows="3"
+                v-model="form.configuration.sslKey"
+                :placeholder="t('datasource.ck_ssl_pem_placeholder')"
+              />
+            </el-form-item>
+          </template>
           <el-form-item>
             <span
               v-if="!['es', 'api'].includes(form.type) && form.configuration.urlType !== 'jdbcUrl'"
@@ -1222,7 +1364,7 @@ defineExpose({
               </el-icon>
             </span>
           </el-form-item>
-          <template v-if="showSSH">
+          <template v-if="showSSH && form.configuration.urlType !== 'jdbcUrl'">
             <el-form-item>
               <el-checkbox v-model="form.configuration.useSSH"
                 >{{ t('data_source.enable_ssh') }}
@@ -1257,8 +1399,8 @@ defineExpose({
             </el-form-item>
             <el-form-item :label="t('data_source.connection_method')">
               <el-radio-group v-model="form.configuration.sshType">
-                <el-radio label="password">{{ t('data_source.password') }}</el-radio>
-                <el-radio label="sshkey">ssh key</el-radio>
+                <el-radio value="password">{{ t('data_source.password') }}</el-radio>
+                <el-radio value="sshkey">ssh key</el-radio>
               </el-radio-group>
             </el-form-item>
             <el-form-item
@@ -1405,8 +1547,8 @@ defineExpose({
           v-if="activeStep === 2 && form.type.startsWith('API')"
         >
           <el-radio-group v-model="form.syncSetting.updateType">
-            <el-radio label="all_scope">{{ t('datasource.all_scope') }}</el-radio>
-            <el-radio label="add_scope"> {{ t('datasource.add_scope') }}</el-radio>
+            <el-radio value="all_scope">{{ t('datasource.all_scope') }}</el-radio>
+            <el-radio value="add_scope"> {{ t('datasource.add_scope') }}</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item
@@ -1415,9 +1557,9 @@ defineExpose({
           v-if="activeStep === 2 && form.type.startsWith('API')"
         >
           <el-radio-group v-model="form.syncSetting.syncRate" @change="onRateChange">
-            <el-radio label="RIGHTNOW">{{ t('data_source.update_now') }}</el-radio>
-            <el-radio label="CRON">{{ t('datasource.cron_config') }}</el-radio>
-            <el-radio label="SIMPLE_CRON">{{ t('datasource.simple_cron') }}</el-radio>
+            <el-radio value="RIGHTNOW">{{ t('data_source.update_now') }}</el-radio>
+            <el-radio value="CRON">{{ t('datasource.cron_config') }}</el-radio>
+            <el-radio value="SIMPLE_CRON">{{ t('datasource.simple_cron') }}</el-radio>
           </el-radio-group>
         </el-form-item>
         <div
@@ -1469,6 +1611,11 @@ defineExpose({
                 <el-input v-model="form.syncSetting.cron" @click="cronEdit = true" />
               </template>
             </el-popover>
+            <div class="cron-preview-row">
+              <el-button text :loading="cronPreviewLoading" @click="previewNextCronTimes">
+                {{ t('datasource.preview_next_exec_times') }}
+              </el-button>
+            </div>
           </el-form-item>
           <el-form-item
             v-if="form.syncSetting.syncRate !== 'RIGHTNOW'"
@@ -1500,6 +1647,22 @@ defineExpose({
           </el-form-item>
         </div>
       </el-form>
+      <el-dialog
+        v-model="cronPreviewVisible"
+        :title="t('datasource.next_five_exec_times')"
+        width="520px"
+        class="create-dialog"
+      >
+        <el-table
+          v-loading="cronPreviewLoading"
+          :data="cronPreviewRows"
+          :empty-text="t('datasource.no_next_exec_time')"
+          header-cell-class-name="header-cell"
+        >
+          <el-table-column prop="index" width="80" label="#" />
+          <el-table-column prop="time" :label="t('datasource.exec_time')" />
+        </el-table>
+      </el-dialog>
       <el-dialog
         :title="t('data_source.edit_parameters')"
         v-model="dialogEditParams"
@@ -1580,8 +1743,12 @@ defineExpose({
   }
 
   .execute-rate-cont {
-    border-radius: 4px;
+    border-radius: 6px;
     margin-top: -8px;
+    .cron-preview-row {
+      width: 100%;
+      margin: 4px 0 -10px -4px;
+    }
   }
 
   .de-select {
@@ -1629,6 +1796,22 @@ defineExpose({
     }
   }
 
+  .cron-input-group {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+
+    .cron-input-row {
+      width: 100%;
+
+      .ed-popover__reference-wrapper,
+      :deep(.ed-input) {
+        width: 100%;
+      }
+    }
+  }
+
   .detail-inner {
     width: 800px;
     padding-top: 8px;
@@ -1644,9 +1827,9 @@ defineExpose({
     }
 
     .left-api_params {
-      border-top-left-radius: 4px;
-      border-bottom-left-radius: 4px;
-      border: 1px solid #bbbfc4;
+      border-top-left-radius: 6px;
+      border-bottom-left-radius: 6px;
+      border: 1px solid #d9dcdf;
       width: 300px;
       padding: 16px;
 
@@ -1668,9 +1851,9 @@ defineExpose({
     }
 
     .right-api_params {
-      border-top-right-radius: 4px;
-      border-bottom-right-radius: 4px;
-      border: 1px solid #bbbfc4;
+      border-top-right-radius: 6px;
+      border-bottom-right-radius: 6px;
+      border: 1px solid #d9dcdf;
       border-left: none;
       width: calc(100% - 200px);
     }
@@ -1759,9 +1942,9 @@ defineExpose({
 .api-card {
   height: 120px;
   width: 392px;
-  border-radius: 4px;
+  border-radius: 6px;
   border: 1px solid var(--deCardStrokeColor, #dee0e3);
-  border-radius: 4px;
+  border-radius: 6px;
   margin: 0 0 16px 16px;
   padding: 16px;
   font-family: var(--de-custom_font, 'PingFang');

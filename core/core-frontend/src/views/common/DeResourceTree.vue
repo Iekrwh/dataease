@@ -7,7 +7,7 @@ import dvDelete from '@/assets/svg/dv-delete.svg'
 import dvMove from '@/assets/svg/dv-move.svg'
 import dvCancelPublish from '@/assets/svg/icon_undo_outlined.svg'
 import { treeDraggbleChart } from '@/utils/treeDraggbleChart'
-import { debounce } from 'lodash-es'
+import { throttle } from 'lodash-es'
 import dvRename from '@/assets/svg/dv-rename.svg'
 import dvDashboardSpine from '@/assets/svg/dv-dashboard-spine.svg'
 import dvDashboardSpineDisabled from '@/assets/svg/dv-dashboard-spine-disabled.svg'
@@ -316,7 +316,7 @@ const nodeClick = (data: BusiTreeNode, node) => {
   }
 }
 
-const getTree = async () => {
+const getTree = async (notOpen = false) => {
   const request = {
     busiFlag: curCanvasType.value,
     resourceTable: props.resourceTable
@@ -340,12 +340,12 @@ const getTree = async () => {
   if (nodeData.length && nodeData[0]['id'] === '0' && nodeData[0]['name'] === 'root') {
     state.originResourceTree = nodeData[0]['children'] || []
     sortTypeChange(curSortType)
-    afterTreeInit()
+    afterTreeInit(notOpen)
     return
   }
   state.originResourceTree = nodeData
   sortTypeChange(curSortType)
-  afterTreeInit()
+  afterTreeInit(notOpen)
 }
 
 const flattedTree = computed<BusiTreeNode[]>(() => {
@@ -364,7 +364,7 @@ function flatTree(tree: BusiTreeNode[]) {
   return result
 }
 
-const afterTreeInit = () => {
+const afterTreeInit = (notOpen = false) => {
   state.pWeightMap = treeParentWeight(state.originResourceTree, rootManage.value ? 9 : 0)
   mounted.value = true
   if (selectedNodeKey.value && returnMounted.value) {
@@ -375,6 +375,7 @@ const afterTreeInit = () => {
   nextTick(() => {
     resourceListTree.value.setCurrentKey(selectedNodeKey.value)
     resourceListTree.value.filter(filterText.value)
+    if (notOpen) return
     nextTick(() => {
       document.querySelector('.is-current')?.firstChild?.click()
     })
@@ -398,7 +399,7 @@ const operation = (cmd: string, data: BusiTreeNode, nodeType: string) => {
     }).then(() => {
       deleteLogic(data.id, curCanvasType.value).then(() => {
         ElMessage.success(t('visualization.delete_success'))
-        getTree()
+        getTree(true)
       })
     })
   } else if (cmd === 'cancelPublish') {
@@ -529,7 +530,7 @@ const resourceEdit = resourceId => {
 }
 
 const resourceOptFinish = () => {
-  getTree()
+  getTree(true)
 }
 
 const resourceCreateFinish = templateData => {
@@ -622,7 +623,7 @@ const sortTypeChange = sortType => {
   state.curSortType = sortType
 }
 
-const proxyAllowDrop = debounce((arg1, arg2) => {
+const proxyAllowDrop = throttle((arg1, arg2) => {
   const flagArray = ['dashboard', 'dataV', 'dataset', 'datasource']
   const flag = flagArray.findIndex(item => item === curCanvasType.value)
   if (flag < 0 || !isFreeFolder(arg2, flag + 1)) {
@@ -643,7 +644,7 @@ const initOpenHandler = newWindow => {
       methodName: 'initOpenHandler',
       args: newWindow
     }
-    openHandler.value.invokeMethod(pm)
+    openHandler.value?.invokeMethod(pm)
   }
 }
 
@@ -683,7 +684,12 @@ defineExpose({
       <div class="icon-methods" v-show="showPosition === 'preview'">
         <span class="title"> {{ resourceLabel }} </span>
         <div v-if="rootManage" class="flex-align-center">
-          <el-tooltip :content="t('work_branch.new_folder')" placement="top" effect="dark">
+          <el-tooltip
+            offset="14"
+            :content="t('work_branch.new_folder')"
+            placement="top"
+            effect="dark"
+          >
             <el-icon
               class="custom-icon btn"
               style="margin-right: 20px"
@@ -693,31 +699,27 @@ defineExpose({
             </el-icon>
           </el-tooltip>
 
-          <el-tooltip :content="newResourceLabel" placement="top" effect="dark">
-            <el-dropdown popper-class="menu-outer-dv_popper" trigger="hover">
-              <el-icon class="custom-icon btn" @click="addOperation('newLeaf', null, 'leaf', true)">
-                <Icon name="icon_file-add_outlined"
-                  ><icon_fileAdd_outlined class="svg-icon"
-                /></Icon>
-              </el-icon>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item @click="addOperation('newLeaf', null, 'leaf', true)">
-                    <el-icon :class="`handle-icon color-${curCanvasType}`">
-                      <Icon><component class="svg-icon" :is="dvSvgType"></component></Icon>
-                    </el-icon>
-                    {{ t('work_branch.new_empty') }}
-                  </el-dropdown-item>
-                  <el-dropdown-item @click="addOperation('newFromTemplate', null, 'leaf', true)">
-                    <el-icon class="handle-icon">
-                      <Icon name="dv-use-template"><dvUseTemplate class="svg-icon" /></Icon>
-                    </el-icon>
-                    {{ t('work_branch.new_using_template') }}
-                  </el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
-          </el-tooltip>
+          <el-dropdown placement="bottom-start" popper-class="menu-outer-dv_popper" trigger="hover">
+            <el-icon class="custom-icon btn" @click="addOperation('newLeaf', null, 'leaf', true)">
+              <Icon name="icon_file-add_outlined"><icon_fileAdd_outlined class="svg-icon" /></Icon>
+            </el-icon>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item @click="addOperation('newLeaf', null, 'leaf', true)">
+                  <el-icon :class="`handle-icon color-${curCanvasType}`">
+                    <Icon><component class="svg-icon" :is="dvSvgType"></component></Icon>
+                  </el-icon>
+                  {{ t('work_branch.new_empty') }}
+                </el-dropdown-item>
+                <el-dropdown-item @click="addOperation('newFromTemplate', null, 'leaf', true)">
+                  <el-icon class="handle-icon">
+                    <Icon name="dv-use-template"><dvUseTemplate class="svg-icon" /></Icon>
+                  </el-icon>
+                  {{ t('work_branch.new_using_template') }}
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </div>
       </div>
       <el-input
@@ -865,10 +867,10 @@ defineExpose({
 </template>
 <style lang="less" scoped>
 .filter-icon-span {
-  border: 1px solid #bbbfc4;
+  border: 1px solid #d9dcdf;
   width: 32px;
   height: 32px;
-  border-radius: 4px;
+  border-radius: 6px;
   color: #1f2329;
   padding: 8px;
   margin-left: 8px;
@@ -914,11 +916,24 @@ defineExpose({
     }
     .custom-icon {
       font-size: 20px;
+      position: relative;
+      outline: none;
       &.btn {
         color: var(--ed-color-primary);
       }
       &:hover {
         cursor: pointer;
+        &::after {
+          content: '';
+          background-color: var(--ed-color-primary-1a, #3370ff1a);
+          width: 28px;
+          height: 28px;
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          border-radius: 6px;
+          transform: translate(-50%, -50%);
+        }
       }
     }
   }
@@ -993,7 +1008,7 @@ defineExpose({
   }
 
   .icon-screen-new {
-    border-radius: 4px;
+    border-radius: 6px;
     color: #fff;
     padding: 3px;
   }
@@ -1002,11 +1017,18 @@ defineExpose({
 
 <style lang="less">
 .menu-outer-dv_popper {
+  --ed-border-color-light: #dee0e3;
   min-width: 140px;
-  margin-top: -2px !important;
+  margin-top: 6px !important;
+  margin-left: -4px !important;
+
+  .ed-dropdown-menu__item:not(.is-disabled):hover {
+    background-color: #1f23291a;
+    color: #1f2329;
+  }
 
   .ed-icon {
-    border-radius: 4px;
+    border-radius: 6px;
   }
 }
 

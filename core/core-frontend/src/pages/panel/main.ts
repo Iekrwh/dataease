@@ -1,7 +1,5 @@
 const suffix = `${import.meta.env.VITE_VERSION}-dataease`
 
-const dom = document.querySelector('head')
-
 const formatterUrl = <T extends Node>(node: T, prefix: string) => {
   if (['SCRIPT', 'LINK'].includes(node.nodeName)) {
     let url = ''
@@ -13,7 +11,7 @@ const formatterUrl = <T extends Node>(node: T, prefix: string) => {
 
     if (url.includes(suffix) || url.includes('dataease-private')) {
       const currentUrlprefix = new URL(url).origin
-      const newUrl = url.replace(currentUrlprefix, prefix)
+      const newUrl = url.startsWith(prefix) ? url : url.replace(currentUrlprefix, prefix)
       if (node instanceof HTMLLinkElement) {
         node.href = newUrl
       } else if (node instanceof HTMLScriptElement) {
@@ -34,9 +32,9 @@ const getPrefix = (): string => {
       } else if (ele instanceof HTMLScriptElement) {
         url = ele.src
       }
-      if (url.includes(suffix)) {
+      if (url.includes('0.0.0-dataease')) {
         prefix = new URL(url).origin
-        const index = url.indexOf(`/js/div_import_${suffix}`)
+        const index = url.indexOf(`/js/div_import_0.0.0-dataease`)
         if (index > 0) {
           prefix = url.substring(0, index)
         }
@@ -48,10 +46,20 @@ const getPrefix = (): string => {
 }
 const element = document.createElement('head')
 document.body.appendChild(element)
-document.querySelector('head').appendChild = <T extends Node>(node: T) => {
+const dom = document.querySelector('head')
+dom.appendChild = <T extends Node>(node: T) => {
   const newNode = formatterUrl(node, getPrefix())
   element.appendChild(newNode)
   return newNode
+}
+const rmc = dom.removeChild
+dom.removeChild = <T extends Node>(node: T) => {
+  if (element.contains(node)) {
+    element.removeChild(node)
+  } else {
+    rmc.bind(dom, node)
+  }
+  return node
 }
 import { App, createApp } from 'vue'
 import '@/style/index.less'
@@ -122,6 +130,7 @@ const setupAll = async (
   const { wsCache } = useCache()
   wsCache.set('TreeSort-backend', defaultSort['basic.defaultSort'] ?? '1')
   wsCache.set('open-backend', defaultSort['basic.defaultOpen'] ?? '0')
+  wsCache.set('embeddedExportMode-backend', defaultSort['basic.embeddedExportMode'] ?? 'sync')
   app.mount(dom)
   return app
 }

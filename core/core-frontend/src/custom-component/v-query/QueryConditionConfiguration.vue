@@ -1176,21 +1176,27 @@ const CascadeDialog = defineAsyncComponent(() => import('./QueryCascade.vue'))
 const cascadeDialog = ref()
 const openCascadeDialog = () => {
   const cascadeMap = conditions.value
-    .filter(
-      ele =>
-        [0, 2, 5].includes(+ele.displayType) &&
-        ele.optionValueSource === 1 &&
-        !!ele.checkedFields?.length &&
-        !!Object.values(ele.checkedFieldsMap).filter(item => !!item).length
-    )
+    .filter(ele => {
+      return (
+        ([0, 2, 5].includes(+ele.displayType) &&
+          ele.optionValueSource === 1 &&
+          !!ele.checkedFields?.length &&
+          !!Object.values(ele.checkedFieldsMap).filter(item => !!item).length) ||
+        ([9].includes(+ele.displayType) && ele.treeFieldList?.length)
+      )
+    })
     .reduce((pre, next) => {
+      const isTree = [9].includes(+next.displayType)
+      const fieldId = isTree ? next.treeFieldList[0].id : next.field.id
+      const datasetId = isTree ? next.treeFieldList[0].datasetGroupId : next.dataset.id
       pre[next.id] = {
-        datasetId: next.dataset.id,
+        datasetId,
+        isTree,
         name: next.name,
         queryId: next.id,
-        fieldId: next.field.id,
+        fieldId: fieldId,
         deType: (datasetMap[next.dataset.id]?.fields?.dimensionList || next.dataset.fields).find(
-          ele => ele.id === next.field.id
+          ele => ele.id === fieldId
         )?.deType
       }
       return pre
@@ -1256,8 +1262,15 @@ const validate = () => {
       ele.defaultValueCheck &&
       ((Array.isArray(ele.defaultValue) && !ele.defaultValue.length) || !ele.defaultValue)
     ) {
-      ElMessage.error(t('report.filter.title'))
-      return true
+      if (ele.optionValueSource !== 1) {
+        ElMessage.error(t('report.filter.title'))
+        return true
+      }
+
+      if (!ele.defaultValueFirstItem) {
+        ElMessage.error(t('report.filter.title'))
+        return true
+      }
     }
 
     if (ele.displayType === '9') {
@@ -1510,7 +1523,6 @@ const validate = () => {
         return true
       }
       if (!ele.setTimeRange) return false
-      console.log(startTime, endTime)
 
       if (
         isInRange(
@@ -1555,7 +1567,9 @@ const handleBeforeClose = () => {
   defaultConfigurationRef.value?.mult()
   defaultConfigurationRef.value?.single()
   handleDialogClick()
-  curComponent.value.id = ''
+  if (curComponent.value) {
+    curComponent.value.id = ''
+  }
   relationshipChartIndex.value = 0
   dialogVisible.value = false
 }
@@ -1777,6 +1791,7 @@ const parameterCompletion = ele => {
     defaultNumValueEnd: null,
     numValueEnd: null,
     numValueStart: null,
+    displayFormat: 0,
     timeRange: {
       intervalType: 'none',
       dynamicWindow: false,
@@ -2169,6 +2184,10 @@ const relativeToCurrentListRange = computed(() => {
         {
           label: t('common.to_this_month'),
           value: 'YearToThisMonth'
+        },
+        {
+          label: t('v_query.year_to_last_month_end'),
+          value: 'YearToLastMonthEnd'
         }
       ]
       break
@@ -2194,6 +2213,10 @@ const relativeToCurrentListRange = computed(() => {
         {
           label: t('v_query.year_to_date'),
           value: 'yearBeginning'
+        },
+        {
+          label: t('v_query.year_to_last_month_end'),
+          value: 'YearToLastMonthEnd'
         },
         {
           label: t('common.month_to_yesterday'),
@@ -2261,6 +2284,7 @@ const timeGranularityMultipleChange = (val: string) => {
 watch(
   () => showError.value,
   val => {
+    if (!curComponent.value) return
     curComponent.value.showError = val
   }
 )
@@ -2346,9 +2370,9 @@ const dsSelectProps = {
 }
 
 const dfs = arr => {
-  return arr.filter(ele => {
+  return (arr || []).filter(ele => {
     if (!!ele.children?.length && !ele.leaf) {
-      ele.children = dfs(ele.children)
+      ele.children = dfs(ele.children) || []
       return !!ele.children?.length
     }
     return ele.leaf
@@ -3431,6 +3455,24 @@ defineExpose({
                   </div>
                 </div>
               </div>
+              <template v-if="['0', '2', '5'].includes(curComponent.displayType)">
+                <div
+                  class="label ellipsis"
+                  :title="t('common.display_formats')"
+                  style="margin-top: 10.5px"
+                >
+                  {{ t('common.display_formats') }}
+                </div>
+                <div class="value" style="margin-top: 10.5px">
+                  <el-radio-group
+                    class="larger-radio icon-info"
+                    v-model="curComponent.displayFormat"
+                  >
+                    <el-radio :label="0">{{ t('common.dropdown_display') }} </el-radio>
+                    <el-radio :label="1">{{ t('common.tile_display') }}</el-radio>
+                  </el-radio-group>
+                </div>
+              </template>
               <div
                 class="label ellipsis"
                 :title="t('v_query.of_option_values')"
@@ -3629,7 +3671,7 @@ defineExpose({
     font-family: var(--de-custom_font, 'PingFang');
     width: 1152px;
     height: 454px;
-    border-radius: 4px;
+    border-radius: 6px;
     border: 1px solid #dee0e3;
     display: flex;
     .ed-checkbox:not(.is-disabled) {

@@ -22,12 +22,19 @@
   <a href="/docs/README.id.md"><img alt="Bahasa Indonesia" src="https://img.shields.io/badge/Bahasa Indonesia-d9d9d9"></a>
   <a href="/docs/README.tr.md"><img alt="Türkçe" src="https://img.shields.io/badge/Türkçe-d9d9d9"></a>
 </p>
+<p align="center">
+  <a href="https://trendshift.io/repositories/1563" target="_blank"><img src="https://trendshift.io/api/badge/repositories/1563" alt="dataease%2Fdataease | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+</p>
 
 ------------------------------
 
 ## 什么是 DataEase？
 
 DataEase 是开源的 BI 工具，帮助用户快速分析数据并洞察业务趋势，从而实现业务的改进与优化。DataEase 支持丰富的数据源连接，能够通过拖拉拽方式快速制作图表，并可以方便的与他人分享。
+
+- 👉 观看视频：[DataEase 两分钟介绍视频 ](https://www.bilibili.com/video/BV1Y8dAYLErb/)
+- 👉 观看PPT：[DataEase PPT 材料](https://fit2cloud.com/dataease/download/introduce-dataease_2026.pdf)
+- 👉 购买图书：[《DataEase 数据可视化分析与实践》](https://item.jd.com/10207058297099.html)
 
 **DataEase 的优势：**
 
@@ -45,15 +52,7 @@ DataEase 是开源的 BI 工具，帮助用户快速分析数据并洞察业务�
 -   数据文件： Excel、CSV 等；
 -   API 数据源。
 
-如果您需要向团队介绍 DataEase，可以使用这个 [官方 PPT 材料](https://fit2cloud.com/dataease/download/introduce-dataease_202506.pdf)。
-
 ## 快速开始
-
-**桌面版：**
-
-你可以在 PC 上安装 DataEasae 桌面版，下载地址为：https://dataease.cn/desktop/index.html
-
-**服务器版：**
 
 ```
 # 准备一台 2 核 4G 以上的 Linux 服务器，并以 root 用户运行以下一键安装脚本：
@@ -64,12 +63,11 @@ curl -sSL https://dataease.oss-cn-hangzhou.aliyuncs.com/quick_start_v2.sh | bash
 # 密码: DataEase@123456
 ```
 
-你也可以通过 [1Panel 应用商店](https://dataease.io/docs/v2/installation/1panel_installation/) 快速部署 DataEase。如果是用于生产环境，推荐使用 [离线安装包方式](https://dataease.io/docs/v2/installation/offline_INSTL_and_UPG/) 进行安装部署。
+如果是用于生产环境，推荐使用 [离线安装包方式](https://dataease.io/docs/v2/installation/offline_INSTL_and_UPG/) 进行安装部署。
 
 如你有更多问题，可以查看在线文档，或者通过论坛和交流群与我们交流。
 
--   [视频介绍](https://www.bilibili.com/video/BV1Y8dAYLErb/)
--   [在线文档](https://dataease.io/docs/)
+-   [在线文档](https://dataease.cn/docs/v2/)
 -   [社区论坛](https://bbs.fit2cloud.com/c/de/6)
 -   微信交流群
 
@@ -110,7 +108,7 @@ curl -sSL https://dataease.oss-cn-hangzhou.aliyuncs.com/quick_start_v2.sh | bash
 
 ## License
 
-Copyright (c) 2014-2025 [FIT2CLOUD 飞致云](https://fit2cloud.com/), All rights reserved.
+Copyright (c) 2014-2026 [FIT2CLOUD 飞致云](https://fit2cloud.com/), All rights reserved.
 
 Licensed under The GNU General Public License version 3 (GPLv3)  (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
 

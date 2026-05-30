@@ -11,7 +11,8 @@ import {
   formatterType,
   getUnitTypeList,
   initFormatCfgUnit,
-  onChangeFormatCfgUnitLanguage
+  onChangeFormatCfgUnitLanguage,
+  mergeTooltipFormat
 } from '@/views/chart/components/js/formatter'
 import { fieldType } from '@/utils/attr'
 import { defaultTo, partition, map, includes, isEmpty } from 'lodash-es'
@@ -45,7 +46,7 @@ const dvMainStore = dvMainStoreWithOut()
 const { batchOptStatus, mobileInPc } = storeToRefs(dvMainStore)
 const predefineColors = COLOR_PANEL
 const toolTip = computed(() => {
-  return props.themes === 'dark' ? 'light' : 'dark'
+  return props.themes || 'dark'
 })
 const emit = defineEmits(['onTooltipChange', 'onExtTooltipChange'])
 const curSeriesFormatter = ref<DeepPartial<SeriesFormatter>>({})
@@ -105,11 +106,17 @@ const changeDataset = () => {
   const formatterIds = formatter.map(i => i.id)
   quotaData.value.forEach(axis => {
     if (!formatterIds.includes(axis.id)) {
-      formatter.push({
+      const formatterItem = {
         ...axis,
         seriesId: axis.id,
         show: false
-      })
+      }
+      mergeTooltipFormat(
+        formatterItem,
+        props.chart.type,
+        dvMainStore.canvasStyleData.component.formatterItem
+      )
+      formatter.push(formatterItem)
     }
   })
   if (formatter[0]) {
@@ -118,14 +125,22 @@ const changeDataset = () => {
 }
 
 const AXIS_PROP: AxisType[] = ['yAxis', 'yAxisExt', 'extBubble']
+const tooltipAxisProp = computed<AxisType[]>(() => {
+  return props.chart.type === 'multi-scatter' ? ['xAxis', ...AXIS_PROP] : AXIS_PROP
+})
 const quotaAxis = computed(() => {
   let result = []
-  AXIS_PROP.forEach(prop => {
+  const axisList: AxisType[] = tooltipAxisProp.value
+  axisList.forEach(prop => {
     if (!chartViewInstance.value?.axis?.includes(prop)) {
       return
     }
     const axis = props.chart[prop]
     axis?.forEach(item => {
+      // 多维散点图 xAxis 可存维度或指标，tooltip 只跟踪指标，跳过维度
+      if (isMultiScatter.value && prop === 'xAxis' && item.groupType !== 'q') {
+        return
+      }
       result.push({ ...item, seriesId: `${item.id}-${prop}` })
     })
   })
@@ -149,7 +164,12 @@ const extTooltip = computed(() => {
     i => !quotaIds.includes(i.id) && i.show && quotaData.value?.findIndex(j => j.id === i.id) !== -1
   )
 })
+const isMultiScatter = computed(() => props.chart.type === 'multi-scatter')
 const showFormatterSummary = computed(() => {
+  // 多维散点图不聚合，不显示汇总方式选择
+  if (isMultiScatter.value) {
+    return false
+  }
   return (
     quotaAxis.value?.findIndex(i => curSeriesFormatter.value.id === i.id) === -1 &&
     curSeriesFormatter.value.id !== '-1'
@@ -161,7 +181,9 @@ const formatterNameEditable = computed(() => {
 const formatterEditable = computed(() => {
   return (
     showProperty('seriesTooltipFormatter') &&
-    (props.chart.yAxis?.length || props.chart.yAxisExt?.length)
+    (props.chart.yAxis?.length ||
+      props.chart.yAxisExt?.length ||
+      (isMultiScatter.value && props.chart.xAxis?.some(i => i.groupType === 'q')))
   )
 })
 const chartViewInstance = computed(() => {
@@ -182,6 +204,11 @@ const COUNT_AGGREGATION_TYPE = [
   { name: t('chart.count_distinct'), value: 'count_distinct' }
 ]
 const COUNT_DE_TYPE = [0, 1, 5]
+
+// 当前选中的指标是否为非数值类型，非数值类型禁用数值格式配置
+const isNonNumericFormatter = computed(() => {
+  return COUNT_DE_TYPE.includes(curSeriesFormatter.value?.deType)
+})
 
 const aggregationList = computed(() => {
   if (COUNT_DE_TYPE.includes(curSeriesFormatter.value?.deType)) {
@@ -263,7 +290,19 @@ const init = () => {
       // 新增图表
       const formatter = state.tooltipForm.seriesTooltipFormatter
       if (!formatter.length) {
-        quotaData.value?.forEach(i => formatter.push({ ...i, seriesId: i.id, show: false }))
+        quotaData.value?.forEach(axis => {
+          const formatterItem = {
+            ...axis,
+            seriesId: axis.id,
+            show: false
+          }
+          mergeTooltipFormat(
+            formatterItem,
+            props.chart.type,
+            dvMainStore.canvasStyleData.component.formatterItem
+          )
+          formatter.push(formatterItem)
+        })
         curSeriesFormatter.value = {}
         return
       }
@@ -300,7 +339,7 @@ const updateSeriesTooltipFormatter = (form: AxisEditForm) => {
     !showSeriesTooltipFormatter.value ||
     !state.tooltipForm.seriesTooltipFormatter.length ||
     !quotaData.value?.length ||
-    !AXIS_PROP.includes(axisType)
+    !tooltipAxisProp.value.includes(axisType)
   ) {
     return
   }
@@ -737,7 +776,7 @@ onMounted(() => {
               class="series-select-option"
               :value="item"
               :label="`${item.name}${
-                item.summary !== '' ? '(' + t('chart.' + item.summary) + ')' : ''
+                !isMultiScatter && item.summary !== '' ? '(' + t('chart.' + item.summary) + ')' : ''
               }`"
               v-if="showOption(item)"
             >
@@ -751,7 +790,9 @@ onMounted(() => {
                 ></Icon>
               </el-icon>
               {{ item.name }}
-              {{ item.summary !== '' ? '(' + t('chart.' + item.summary) + ')' : '' }}
+              {{
+                !isMultiScatter && item.summary !== '' ? '(' + t('chart.' + item.summary) + ')' : ''
+              }}
             </el-option>
           </template>
         </el-select>
@@ -815,7 +856,7 @@ onMounted(() => {
           >
             <el-select
               size="small"
-              :disabled="!curSeriesFormatter.show"
+              :disabled="!curSeriesFormatter.show || isNonNumericFormatter"
               style="width: 100%"
               :effect="props.themes"
               v-model="curSeriesFormatter.formatterCfg.type"
@@ -837,7 +878,7 @@ onMounted(() => {
           >
             <el-input-number
               controls-position="right"
-              :disabled="!curSeriesFormatter.show"
+              :disabled="!curSeriesFormatter.show || isNonNumericFormatter"
               style="width: 100%"
               :effect="props.themes"
               v-model="curSeriesFormatter.formatterCfg.decimalCount"
@@ -859,7 +900,9 @@ onMounted(() => {
                 >
                   <el-select
                     :disabled="
-                      !curSeriesFormatter.show || curSeriesFormatter.formatterCfg.type == 'percent'
+                      !curSeriesFormatter.show ||
+                      isNonNumericFormatter ||
+                      curSeriesFormatter.formatterCfg.type == 'percent'
                     "
                     size="small"
                     :effect="themes"
@@ -887,7 +930,9 @@ onMounted(() => {
                 >
                   <el-select
                     :disabled="
-                      !curSeriesFormatter.show || curSeriesFormatter.formatterCfg.type == 'percent'
+                      !curSeriesFormatter.show ||
+                      isNonNumericFormatter ||
+                      curSeriesFormatter.formatterCfg.type == 'percent'
                     "
                     :effect="props.themes"
                     v-model="curSeriesFormatter.formatterCfg.unit"
@@ -913,9 +958,10 @@ onMounted(() => {
                   :class="'form-item-' + themes"
                 >
                   <el-input
-                    :disabled="!curSeriesFormatter.show"
+                    :disabled="!curSeriesFormatter.show || isNonNumericFormatter"
                     :effect="props.themes"
                     v-model="curSeriesFormatter.formatterCfg.suffix"
+                    maxlength="30"
                     size="small"
                     clearable
                     :placeholder="t('commons.input_content')"
@@ -928,7 +974,7 @@ onMounted(() => {
 
           <el-form-item class="form-item" :class="'form-item-' + themes">
             <el-checkbox
-              :disabled="!curSeriesFormatter.show"
+              :disabled="!curSeriesFormatter.show || isNonNumericFormatter"
               size="small"
               :effect="props.themes"
               v-model="curSeriesFormatter.formatterCfg.thousandSeparator"
@@ -971,8 +1017,7 @@ onMounted(() => {
               style="width: 100%"
               :effect="themes"
               controls-position="right"
-              size="middle"
-              precision="0"
+              :precision="0"
               :min="1"
               :max="600"
               :disabled="!state.tooltipForm.carousel.enable"
@@ -991,8 +1036,7 @@ onMounted(() => {
               style="width: 100%"
               :effect="themes"
               controls-position="right"
-              size="middle"
-              precision="0"
+              :precision="0"
               :min="1"
               :max="600"
               :disabled="!state.tooltipForm.carousel.enable"

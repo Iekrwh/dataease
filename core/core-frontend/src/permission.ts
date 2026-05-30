@@ -12,6 +12,8 @@ import { isMobile, checkPlatform, isLarkPlatform, isPlatformClient } from '@/uti
 import { interactiveStoreWithOut } from '@/store/modules/interactive'
 import { useAppearanceStoreWithOut } from '@/store/modules/appearance'
 import { useEmbedded } from '@/store/modules/embedded'
+import { useLoading } from '@/hooks/web/useLoading'
+import { ElMessageBox } from 'element-plus-secondary'
 const appearanceStore = useAppearanceStoreWithOut()
 const { wsCache } = useCache()
 const permissionStore = usePermissionStoreWithOut()
@@ -20,13 +22,16 @@ const userStore = useUserStoreWithOut()
 const appStore = useAppStoreWithOut()
 
 const { start, done } = useNProgress()
-
+const { open } = useLoading()
 const { loadStart, loadDone } = usePageLoading()
 
 const whiteList = ['/login', '/de-link', '/chart-view', '/admin-login', '/401'] // 不重定向白名单
 const embeddedWindowWhiteList = ['/dvCanvas', '/dashboard', '/preview', '/dataset-embedded-form']
 const embeddedRouteWhiteList = ['/dataset-embedded', '/dataset-form', '/dataset-embedded-form']
 router.beforeEach(async (to, from, next) => {
+  if (['/chart-view'].includes(to.path) || to.path.startsWith('/de-link/')) {
+    open()
+  }
   start()
   loadStart()
   const platform = checkPlatform()
@@ -57,7 +62,7 @@ router.beforeEach(async (to, from, next) => {
       if (toPath.includes('?')) {
         toPath = to.fullPath.substring(0, to.fullPath.lastIndexOf('?'))
       }
-      window.location.href = prefix + '/mobile.html#' + toPath + linkQuery
+      window.location.href = (prefix + '/mobile.html#' + toPath + linkQuery).replace(/\+/g, '%2B')
     } else if (
       wsCache.get('user.token') ||
       isDesktop ||
@@ -66,6 +71,9 @@ router.beforeEach(async (to, from, next) => {
       let pathname = window.location.pathname
       pathname = pathname.substring(0, pathname.length - 1)
       let url = window.origin + pathname + '/mobile.html#/index'
+      if (location.hash?.startsWith('#/preview')) {
+        url = window.origin + pathname + '/mobile.html' + location.hash
+      }
       if (window.location.search) {
         url += window.location.search
       }
@@ -77,6 +85,7 @@ router.beforeEach(async (to, from, next) => {
   const defaultSort = await getDefaultSettings()
   wsCache.set('TreeSort-backend', defaultSort['basic.defaultSort'] ?? '1')
   wsCache.set('open-backend', defaultSort['basic.defaultOpen'] ?? '0')
+  wsCache.set('embeddedExportMode-backend', defaultSort['basic.embeddedExportMode'] ?? 'sync')
   if ((wsCache.get('user.token') || isDesktop) && !to.path.startsWith('/de-link/')) {
     if (!userStore.getUid) {
       await userStore.setUser()
@@ -102,6 +111,9 @@ router.beforeEach(async (to, from, next) => {
           }, {})
         }
         if (!pathValid(to.path) && to.path !== '/404' && !to.path.startsWith('/de-link')) {
+          if (to.path.startsWith('/sys-setting')) {
+            await noAdminPermission()
+          }
           const firstPath = getFirstAuthMenu()
           next({ path: firstPath || '/404' })
           return
@@ -130,6 +142,9 @@ router.beforeEach(async (to, from, next) => {
       await interactiveStore.initInteractive(true)
 
       if (!pathValid(to.path) && to.path !== '/404' && !to.path.startsWith('/de-link')) {
+        if (to.path.startsWith('/sys-setting')) {
+          await noAdminPermission()
+        }
         const firstPath = getFirstAuthMenu()
         next({ path: firstPath || '/404' })
         return
@@ -162,7 +177,34 @@ router.beforeEach(async (to, from, next) => {
     }
   }
 })
-
+const noAdminPermission = async () => {
+  const promise = new Promise<void>((resolve, reject) => {
+    ElMessageBox.confirm('当前页面仅对 admin 开放, 即将跳转首页', {
+      confirmButtonType: 'primary',
+      type: 'warning',
+      confirmButtonText: '确定',
+      cancelButtonText: '',
+      autofocus: false,
+      showCancelButton: false,
+      showClose: false
+    })
+      .then(() => {
+        resolve()
+      })
+      .catch(() => {
+        reject()
+      })
+  })
+  return Promise.race([
+    promise,
+    new Promise<void>(resolve => {
+      setTimeout(() => {
+        ElMessageBox.close()
+        resolve()
+      }, 3000)
+    })
+  ])
+}
 router.afterEach(() => {
   done()
   loadDone()

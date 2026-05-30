@@ -231,10 +231,12 @@ const next = () => {
   }
 
   if (currentDsType.value.includes('ExcelRemote') && activeStep.value !== 2) {
-    const validate = excelRemote.value.validateExcel()
-    if (validate) {
-      setNextStep()
-    }
+    const validateFrom = excelRemote.value.submitForm()
+    validateFrom(val => {
+      if (val && excelRemote.value.validateExcel()) {
+        setNextStep()
+      }
+    })
     return
   }
 
@@ -295,7 +297,7 @@ const continueCreating = () => {
   init(null, pid.value)
 }
 
-const handleShowFinishPage = ({ id, name, pid }) => {
+const handleShowFinishPage = ({ id, name, pid: pidVal }) => {
   isShowFinishPage()
     .then(res => {
       if (editDs.value || !res.data) {
@@ -308,7 +310,7 @@ const handleShowFinishPage = ({ id, name, pid }) => {
       }
     })
     .finally(() => {
-      pid.value = pid
+      pid.value = pidVal
     })
 }
 

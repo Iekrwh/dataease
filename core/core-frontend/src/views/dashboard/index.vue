@@ -35,6 +35,8 @@ import { useI18n } from '@/hooks/web/useI18n'
 import DashboardHiddenComponent from '@/components/dashboard/DashboardHiddenComponent.vue'
 import { recoverToPublished } from '@/api/visualization/dataVisualization'
 import SqlAssistant from '@/views/sqlbot/assistant.vue'
+import { contextmenuStoreWithOut } from '@/store/modules/data-visualization/contextmenu'
+const contextmenuStore = contextmenuStoreWithOut()
 const embeddedStore = useEmbedded()
 const { wsCache } = useCache()
 const canvasCacheOutRef = ref(null)
@@ -186,6 +188,7 @@ onMounted(async () => {
   dvMainStore.setCurComponent({ component: null, index: null })
   dvMainStore.setHiddenListStatus(false)
   snapshotStore.initSnapShot()
+  contextmenuStore.hideContextMenu()
   if (window.location.hash.includes('#/dashboard')) {
     newWindowFromDiv.value = true
   }
@@ -205,7 +208,8 @@ onMounted(async () => {
   const createType = embeddedStore.createType || router.currentRoute.value.query.createType
   const templateParams =
     embeddedStore.templateParams || router.currentRoute.value.query.templateParams
-  const checkResult = await checkPer(resourceId)
+  const checkResourceId = opt && opt === 'copy' ? null : resourceId
+  const checkResult = await checkPer(checkResourceId as string)
   if (!checkResult) {
     return
   }
@@ -339,7 +343,7 @@ onUnmounted(() => {
       :class="{ 'preview-content': editMode === 'preview' }"
       element-loading-background="rgba(0, 0, 0, 0)"
     >
-      <SqlAssistant></SqlAssistant>
+      <!--      <SqlAssistant></SqlAssistant>-->
       <!-- 中间画布 -->
       <main class="center" :class="{ 'de-screen-full': fullscreenFlag }">
         <de-canvas

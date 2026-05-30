@@ -199,13 +199,13 @@ export const COMMON_COMPONENT_BACKGROUND_BASE: CommonBackground = {
 
 export const COMMON_COMPONENT_BACKGROUND_LIGHT = {
   ...COMMON_COMPONENT_BACKGROUND_BASE,
-  backgroundColor: 'rgba(255,255,255,1)',
+  backgroundColor: 'rgba(255,255,255,0.1)',
   innerImageColor: 'rgba(16, 148, 229,1)'
 }
 
 export const COMMON_COMPONENT_BACKGROUND_DARK = {
   ...COMMON_COMPONENT_BACKGROUND_BASE,
-  backgroundColor: 'rgba(19,28,66,1)',
+  backgroundColor: 'rgba(19,28,66,0.1)',
   innerImageColor: '#1094E5'
 }
 
@@ -223,7 +223,7 @@ export const COMMON_COMPONENT_BACKGROUND_MAP = {
 
 export const COMMON_TAB_TITLE_BACKGROUND = {
   enable: false, // 是否启用tab标题背景
-  multiply: true, // 激活状态与非激活状态背景是否复用
+  multiply: false, // 激活状态与非激活状态背景是否复用
   active: COMMON_COMPONENT_BACKGROUND_LIGHT,
   inActive: COMMON_COMPONENT_BACKGROUND_LIGHT
 }

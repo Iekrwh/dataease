@@ -19,12 +19,12 @@ const getDynamicRangeTime = (type: number, selectValue: any, timeGranularityMult
       +new Date(
         dayjs(selectValue[0])
           .startOf(timeType as 'month' | 'year' | 'date')
-          .format('YYYY-MM-DD HH:mm:ss')
+          .format('YYYY/MM/DD HH:mm:ss')
       ),
       +new Date(
         dayjs(selectValue[1])
           .endOf(timeType as 'month' | 'year' | 'date')
-          .format('YYYY-MM-DD HH:mm:ss')
+          .format('YYYY/MM/DD HH:mm:ss')
       )
     ]
   }
@@ -271,7 +271,7 @@ const getOperator = (
   firstLoad
 ) => {
   if (+displayType === 9) {
-    return multiple ? 'in' : 'eq'
+    return 'in'
   }
 
   if (+displayType === 22) {
@@ -295,7 +295,7 @@ const getOperator = (
     return valueF === '' ? operatorS : operatorF
   }
 
-  return [1, 7].includes(+displayType) ? 'between' : multiple ? 'in' : 'eq'
+  return [1, 7].includes(+displayType) ? 'between' : 'in'
 }
 
 const duplicateRemoval = arr => {
@@ -363,10 +363,36 @@ export const searchQuery = (queryComponentList, filter, curComponentId, firstLoa
             timeGranularity = 'date',
             displayType,
             displayId,
-            multiple
+            multiple,
+            optionFilter
           } = item
 
           const isTree = +displayType === 9
+          if (optionFilter) {
+            let fieldIdOption = item.checkedFieldsMap[curComponentId]
+            const optionFilterValue = isTree
+              ? optionFilter.map(itemOption => itemOption.replace(/-de-/g, ','))
+              : optionFilter
+            if (isTree) {
+              const [i, r] = getFieldId(
+                treeFieldList,
+                optionFilterValue,
+                relationshipChartIndex,
+                ids
+              )
+              fieldIdOption = i
+            }
+            filter.push({
+              filterId: id,
+              filterFrom: 'optionFilter',
+              componentId: ele.id,
+              fieldId: fieldIdOption,
+              operator: 'in',
+              value: optionFilterValue,
+              parameters: [],
+              isTree
+            })
+          }
 
           if (
             timeType === 'dynamic' &&
@@ -464,7 +490,7 @@ export const searchQuery = (queryComponentList, filter, curComponentId, firstLoa
               timeGranularity,
               timeGranularityMultiple
             )
-            const operator = getOperator(
+            let operator = getOperator(
               displayType,
               multiple,
               conditionType,
@@ -478,6 +504,7 @@ export const searchQuery = (queryComponentList, filter, curComponentId, firstLoa
               conditionValueS,
               firstLoad
             )
+
             if (result?.length) {
               let fieldId = item.checkedFieldsMap[curComponentId]
               if (isTree) {
@@ -515,9 +542,14 @@ export const searchQuery = (queryComponentList, filter, curComponentId, firstLoa
                 const parametersFilterEnd = duplicateRemoval(
                   item.parametersArr[curComponentId].filter(e => e.id === endTimeFieldId)
                 )
+                if (endTimeFieldId.includes('|DE|')) {
+                  operator = multiple ? 'in' : 'eq'
+                }
                 filter.push({
+                  filterId: id,
                   componentId: ele.id,
                   fieldId: endTimeFieldId,
+                  arrayType: 'END',
                   operator,
                   value: resultEnd,
                   parameters: parametersFilterEnd,
@@ -546,9 +578,14 @@ export const searchQuery = (queryComponentList, filter, curComponentId, firstLoa
                 const parametersFilterEnd = duplicateRemoval(
                   item.parametersArr[curComponentId].filter(e => e.id === endTimeFieldId)
                 )
+                if (endTimeFieldId.includes('|DE|')) {
+                  operator = multiple ? 'in' : 'eq'
+                }
                 filter.push({
+                  filterId: id,
                   componentId: ele.id,
                   fieldId: endTimeFieldId,
+                  arrayType: 'END',
                   operator,
                   value: resultEnd,
                   parameters: parametersFilterEnd,
@@ -556,6 +593,9 @@ export const searchQuery = (queryComponentList, filter, curComponentId, firstLoa
                 })
               }
 
+              if (fieldId.includes('|DE|')) {
+                operator = multiple ? 'in' : 'eq'
+              }
               filter.push({
                 filterId: id,
                 componentId: ele.id,

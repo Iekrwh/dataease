@@ -47,6 +47,7 @@ import radarOrigin from '@/assets/svg/radar-origin.svg'
 import richTextOrigin from '@/assets/svg/rich-text-origin.svg'
 import sankeyOrigin from '@/assets/svg/sankey-origin.svg'
 import scatterOrigin from '@/assets/svg/scatter-origin.svg'
+import multiScatterOrigin from '@/assets/svg/multi-scatter-origin.svg'
 import stockLineOrigin from '@/assets/svg/stock-line-origin.svg'
 import symbolicMapOrigin from '@/assets/svg/symbolic-map-origin.svg'
 import tableInfoOrigin from '@/assets/svg/table-info-origin.svg'
@@ -241,6 +242,7 @@ const iconMap = {
   'rich-text-origin': richTextOrigin,
   'sankey-origin': sankeyOrigin,
   'scatter-origin': scatterOrigin,
+  'multi-scatter-origin': multiScatterOrigin,
   'stock-line-origin': stockLineOrigin,
   'symbolic-map-origin': symbolicMapOrigin,
   'table-info-origin': tableInfoOrigin,
@@ -332,17 +334,14 @@ const expandClick = component => {
                   v-if="['DeTabs', 'Group'].includes(getComponent(index)?.component)"
                   style="width: 12px; margin-right: 10px"
                 >
-                  <el-icon class="component-expand" @click="expandClick(getComponent(index))">
-                    <Icon
-                      v-if="getComponent(index)?.expand"
-                      name="dv-expand-down"
-                      class="expand-icon"
+                  <el-icon
+                    class="component-expand expand-icon"
+                    @click="expandClick(getComponent(index))"
+                  >
+                    <Icon v-if="getComponent(index)?.expand" name="dv-expand-down"
                       ><dvExpandDown class="svg-icon expand-icon"
                     /></Icon>
-                    <Icon
-                      v-if="!getComponent(index)?.expand"
-                      name="dv-expand-right"
-                      class="expand-icon"
+                    <Icon v-if="!getComponent(index)?.expand" name="dv-expand-right"
                       ><dvExpandRight class="svg-icon expand-icon"
                     /></Icon>
                   </el-icon>
@@ -570,7 +569,7 @@ const expandClick = component => {
   cursor: pointer;
   height: 22px !important;
   width: 22px !important;
-  border-radius: 4px;
+  border-radius: 6px;
   padding: 0 4px;
 
   .opt-icon {

@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { getStyle } from '@/utils/style'
 import eventBus from '@/utils/eventBus'
-import { ref, toRefs, computed, nextTick } from 'vue'
+import { ref, toRefs, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import findComponent from '@/utils/components'
-import { downloadCanvas2, imgUrlTrans } from '@/utils/imgUtils'
+import { downloadCanvas2 } from '@/utils/imgUtils'
 import ComponentEditBar from '@/components/visualization/ComponentEditBar.vue'
 import ComponentSelector from '@/components/visualization/ComponentSelector.vue'
 import { useEmitt } from '@/hooks/web/useEmitt'
@@ -11,11 +11,18 @@ import Board from '@/components/de-board/Board.vue'
 import { dvMainStoreWithOut } from '@/store/modules/data-visualization/dvMain'
 import { activeWatermarkCheckUser, removeActiveWatermark } from '@/components/watermark/watermark'
 import { isMobile } from '@/utils/utils'
-import { isDashboard, isMainCanvas } from '@/utils/canvasUtils'
+import { isMainCanvas } from '@/utils/canvasUtils'
 import { XpackComponent } from '@/components/plugin'
 import DePreviewPopDialog from '@/components/visualization/DePreviewPopDialog.vue'
 import Icon from '../../icon-custom/src/Icon.vue'
 import replaceOutlined from '@/assets/svg/icon_replace_outlined.svg'
+import { useI18n } from '@/hooks/web/useI18n'
+import {
+  isBlurBgEnabled,
+  getBlurBgStyle,
+  getComponentBackgroundStyle
+} from '@/utils/backgroundStyleUtils'
+const { t } = useI18n()
 
 const componentWrapperInnerRef = ref(null)
 const componentEditBarRef = ref(null)
@@ -148,6 +155,11 @@ const component = ref(null)
 const emits = defineEmits(['userViewEnlargeOpen', 'datasetParamsInit', 'onPointClick'])
 const wrapperId = 'wrapper-outer-id-' + config.value.id
 
+const suspensionViewButtonAvailable = computed(
+  () =>
+    dvMainStore.canvasStyleData.suspensionViewButtonAvailable === undefined ||
+    dvMainStore.canvasStyleData.suspensionViewButtonAvailable
+)
 const viewDemoInnerId = computed(() => 'enlarge-inner-content-' + config.value.id)
 const htmlToImage = () => {
   useEmitt().emitter.emit('l7-prepare-picture', config.value.id)
@@ -155,7 +167,7 @@ const htmlToImage = () => {
   setTimeout(() => {
     const vueDom = document.getElementById(viewDemoInnerId.value)
     activeWatermarkCheckUser(viewDemoInnerId.value, 'canvas-main', scale.value / 100)
-    downloadCanvas2('img', vueDom, '图表', () => {
+    downloadCanvas2('img', vueDom, t('chart.chart'), () => {
       // do callback
       removeActiveWatermark(viewDemoInnerId.value)
       downLoading.value = false
@@ -166,18 +178,18 @@ const htmlToImage = () => {
 
 const handleInnerMouseDown = e => {
   // do setCurComponent
-  if (showPosition.value.includes('multiplexing')) {
+  if (showPositionActive.value.includes('multiplexing')) {
     componentEditBarRef.value.multiplexingCheckOut()
     e?.stopPropagation()
     e?.preventDefault()
   }
   if (
     (!['rich-text'].includes(config.value.innerType) &&
-      ['popEdit', 'preview'].includes(showPosition.value)) ||
+      ['popEdit', 'preview'].includes(showPositionActive.value)) ||
     dvMainStore.mobileInPc
   ) {
     onClick()
-    if (e.target?.className?.includes('ed-input__inner')) return
+    if (e.target?.className?.includes?.('ed-input__inner')) return
     e?.stopPropagation()
     e?.preventDefault()
   }
@@ -213,43 +225,21 @@ const onMouseEnter = () => {
   eventBus.emit('v-hover', config.value.id)
 }
 
+const blurBgEnable = computed(() => {
+  return isBlurBgEnabled(config.value.commonBackground)
+})
+
+const blurBgStyle = computed(() => {
+  return getBlurBgStyle(config.value.commonBackground, deepScale.value)
+})
+
 const componentBackgroundStyle = computed(() => {
   if (config.value.commonBackground) {
-    const {
-      backdropFilterEnable,
-      backdropFilter,
-      backgroundColorSelect,
-      backgroundColor,
-      backgroundImageEnable,
-      backgroundType,
-      outerImage,
-      innerPadding,
-      borderRadius
-    } = config.value.commonBackground
-    let style = {
-      padding: innerPadding * deepScale.value + 'px',
-      borderRadius: borderRadius + 'px'
-    }
-    let colorRGBA = ''
-    if (backgroundColorSelect && backgroundColor) {
-      colorRGBA = backgroundColor
-    }
-    if (backgroundImageEnable) {
-      if (backgroundType === 'outerImage' && typeof outerImage === 'string') {
-        style['background'] = `url(${imgUrlTrans(outerImage)}) no-repeat ${colorRGBA}`
-      } else {
-        style['background-color'] = colorRGBA
-      }
-    } else {
-      style['background-color'] = colorRGBA
-    }
-    if (config.value.component !== 'UserView') {
-      style['overflow'] = 'hidden'
-    }
-    if (backdropFilterEnable) {
-      style['backdrop-filter'] = 'blur(' + backdropFilter + 'px)'
-    }
-    return style
+    return getComponentBackgroundStyle(config.value.commonBackground, {
+      scale: deepScale.value,
+      isUserView: ['DeTabs', 'UserView'].includes(config.value.component),
+      forceNoPadding: ['Group'].includes(config.value.component)
+    })
   }
   return {}
 })
@@ -301,27 +291,28 @@ const onPointClick = param => {
 
 const eventEnable = computed(
   () =>
-    showPosition.value.includes('preview') &&
+    showPositionActive.value.includes('preview') &&
     (['Picture', 'CanvasIcon', 'CircleShape', 'SvgTriangle', 'RectShape', 'ScrollText'].includes(
       config.value.component
     ) ||
       ['indicator', 'rich-text'].includes(config.value.innerType)) &&
     config.value.events &&
     config.value.events.checked &&
-    (isDashboard() || (!isDashboard() && !isMobile())) &&
-    showPosition.value !== 'canvas-multiplexing'
+    showPositionActive.value !== 'canvas-multiplexing'
 )
 
 const onWrapperClickCur = e => {
   // 指标卡为内部触发
   if (['indicator'].includes(config.value.innerType)) {
+    e.preventDefault()
+    e.stopPropagation()
     return
   }
   onWrapperClick(e)
 }
 
 const onWrapperClick = e => {
-  if (eventEnable.value && !['edit-preview'].includes(showPosition.value)) {
+  if (eventEnable.value && !['edit-preview'].includes(showPositionActive.value)) {
     if (config.value.events.type === 'showHidden') {
       // 打开弹框区域
       nextTick(() => {
@@ -339,14 +330,8 @@ const onWrapperClick = e => {
           } else {
             window.open(url, '_blank')
           }
-          if (isMobile()) {
-            window.location.reload()
-          }
         } else {
           initOpenHandler(window.open(url, jumpType))
-          if (isMobile()) {
-            window.location.reload()
-          }
         }
       } catch (e) {
         console.warn('url 格式错误:' + url)
@@ -374,7 +359,8 @@ const initOpenHandler = newWindow => {
   }
 }
 const deepScale = computed(() => scale.value / 100)
-const showActive = computed(() => props.popActive || (dvMainStore.mobileInPc && props.active))
+//const showActive = computed(() => props.popActive || (dvMainStore.mobileInPc && props.active))
+const showActive = false
 
 const freezeFlag = computed(() => {
   return (
@@ -393,7 +379,7 @@ const commonParams = computed(() => {
 })
 
 const showCheck = computed(() => {
-  return dvMainStore.mobileInPc && showPosition.value === 'edit'
+  return dvMainStore.mobileInPc && showPositionActive.value === 'edit'
 })
 
 const updateFromMobile = (e, type) => {
@@ -406,13 +392,56 @@ const updateFromMobile = (e, type) => {
     value: config.value.id
   })
 }
+
+const showPositionActive = computed(() =>
+  showPosition.value === 'edit-preview' ? 'preview' : showPosition.value
+)
+const isIntersecting = ref(false)
+const observer = ref<IntersectionObserver | null>(null)
+// 移动端懒加载开关
+const isMobileLazyLoadEnabled = computed(() => {
+  return isMobile() || dvMainStore.inMobile || dvMainStore.mobileInPc
+})
+// 初始化IntersectionObserver
+onMounted(() => {
+  if (isMobileLazyLoadEnabled.value) {
+    const wrapperInner = componentWrapperInnerRef.value
+    if (wrapperInner) {
+      observer.value = new IntersectionObserver(
+        entries => {
+          entries.forEach(entry => {
+            if (entry.isIntersecting) {
+              isIntersecting.value = true
+              // 一旦加载完成，不再监听
+              if (observer.value) {
+                observer.value.unobserve(entry.target)
+              }
+            }
+          })
+        },
+        {
+          rootMargin: '200px 0px', // 提前200px开始加载
+          threshold: 0.1
+        }
+      )
+      observer.value.observe(wrapperInner)
+    }
+  }
+})
+
+// 清理Observer
+onBeforeUnmount(() => {
+  if (observer.value) {
+    observer.value.disconnect()
+  }
+})
 </script>
 
 <template>
   <div
     class="wrapper-outer"
     :class="[
-      showPosition + '-' + config.component,
+      showPositionActive + '-' + config.component,
       {
         'freeze-component': freezeFlag
       }
@@ -421,7 +450,7 @@ const updateFromMobile = (e, type) => {
     @mousedown="handleInnerMouseDown"
     @mouseenter="onMouseEnter"
     v-loading="downLoading"
-    element-loading-text="导出中..."
+    :element-loading-text="$t('visualization.export_loading')"
     element-loading-background="rgba(255, 255, 255, 1)"
   >
     <div
@@ -435,13 +464,15 @@ const updateFromMobile = (e, type) => {
       </el-icon>
     </div>
     <component-edit-bar
-      v-if="!showPosition.includes('canvas') && !props.isSelector"
+      v-if="
+        !showPositionActive.includes('canvas') && !props.isSelector && suspensionViewButtonAvailable
+      "
       class="wrapper-edit-bar"
       ref="componentEditBarRef"
       :canvas-id="canvasId"
       :index="index"
       :element="config"
-      :show-position="showPosition"
+      :show-position="showPositionActive"
       :class="{ 'wrapper-edit-bar-active': active }"
       @componentImageDownload="htmlToImage"
       @userViewEnlargeOpen="opt => emits('userViewEnlargeOpen', opt)"
@@ -461,6 +492,7 @@ const updateFromMobile = (e, type) => {
       :id="viewDemoInnerId"
       :style="componentBackgroundStyle"
     >
+      <div v-if="blurBgEnable" class="blur-bg" :style="blurBgStyle"></div>
       <div
         class="wrapper-inner-adaptor"
         :style="slotStyle"
@@ -468,6 +500,7 @@ const updateFromMobile = (e, type) => {
         @mousedown="onWrapperClickCur"
       >
         <component
+          v-if="isIntersecting || !isMobileLazyLoadEnabled"
           :is="findComponent(config['component'])"
           :view="viewInfo"
           ref="component"
@@ -483,7 +516,7 @@ const updateFromMobile = (e, type) => {
           :element="config"
           :request="config?.request"
           :linkage="config?.linkage"
-          :show-position="showPosition"
+          :show-position="showPositionActive"
           :search-count="searchCount"
           :scale="deepScale"
           :disabled="true"
@@ -539,6 +572,12 @@ const updateFromMobile = (e, type) => {
     width: 100%;
     height: 100%;
   }
+}
+
+.blur-bg {
+  width: 100%;
+  height: 100%;
+  background-size: 100% 100% !important;
 }
 
 .wrapper-edit-bar-active {

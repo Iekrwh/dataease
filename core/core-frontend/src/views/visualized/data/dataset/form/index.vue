@@ -51,7 +51,7 @@ import UnionEdit from './UnionEdit.vue'
 import type { FormInstance } from 'element-plus-secondary'
 import type { BusiTreeNode } from '@/models/tree/TreeNode'
 import CreatDsGroup from './CreatDsGroup.vue'
-import { guid, getFieldName, timeTypes, type DataSource } from './util'
+import { guid, getFieldName, timeTypes, num, type DataSource } from './util'
 import { fieldType } from '@/utils/attr'
 import { cancelMap } from '@/config/axios/service'
 import { useEmbedded } from '@/store/modules/embedded'
@@ -606,7 +606,11 @@ const editField = item => {
   editCalcField.value = true
   nextTick(() => {
     calcTitle.value = t('dataset.edit_calc_field')
-    calcEdit.value.initEdit(item, dimensions.value, quota.value)
+    calcEdit.value.initEdit(
+      item,
+      dimensions.value.filter(ele => ele.extField !== 3),
+      quota.value.filter(ele => ele.extField !== 3)
+    )
   })
 }
 
@@ -848,14 +852,12 @@ const allfields = ref([])
 provide('allfields', allfields)
 provide('isCross', isCross)
 
-let num = +new Date()
-
 const expandedD = ref(true)
 const expandedQ = ref(true)
 const setGuid = (arr, id, datasourceId, oldArr) => {
   arr.forEach(ele => {
     if (!ele.id) {
-      ele.id = oldArr.find(itx => itx.originName === ele.originName)?.id || `${++num}`
+      ele.id = oldArr.find(itx => itx.originName === ele.originName)?.id || `${++num.value}`
       ele.datasetTableId = id
       ele.datasourceId = datasourceId
     }
@@ -965,7 +967,6 @@ const confirmEditUnion = () => {
   setGuid(parent.currentDsFields, parent.id, parent.datasourceId, parentOldCurrentDsFields)
   const top = cloneDeep(node)
   const bottom = cloneDeep(parent)
-
   let arr = []
   dfsFieldsTips(arr, datasetDrag.value.getNodeList(), [node.id, parent.id])
   arr = [...arr, ...node.currentDsFields, ...parent.currentDsFields]
@@ -1342,7 +1343,7 @@ onMounted(async () => {
   isEdit.value = false
   await new Promise(r => (p = r))
   await initEdite()
-  getDatasource(isEdit.value ? 0 : 2)
+  getDatasource(2)
   window.addEventListener('resize', handleResize)
   getSqlResultHeight()
   quotaTableHeight.value = sqlResultHeight.value - 242
@@ -1654,6 +1655,7 @@ const sourceChange = val => {
 
 const finish = res => {
   const { id, pid, name } = res
+  isUpdate = false
   datasetName.value = name
   nodeInfo = {
     id,
@@ -2093,6 +2095,7 @@ const getIconNameCalc = (deType, extField, dimension = false) => {
                         <div class="column-style">
                           <el-input
                             v-model="scope.row.name"
+                            maxlength="100"
                             :placeholder="t('commons.input_content')"
                           />
                         </div>
@@ -2207,6 +2210,12 @@ const getIconNameCalc = (deType, extField, dimension = false) => {
                             {{ fieldTypes(scope.row.deExtractType) }}
                           </span>
                         </div>
+                      </template>
+                    </el-table-column>
+
+                    <el-table-column :label="t('chart.total_sort_field')" align="center" width="90">
+                      <template #default="scope">
+                        <el-checkbox v-model="scope.row.orderChecked" />
                       </template>
                     </el-table-column>
 
@@ -2406,6 +2415,12 @@ const getIconNameCalc = (deType, extField, dimension = false) => {
                             {{ fieldTypes(scope.row.deExtractType) }}
                           </span>
                         </div>
+                      </template>
+                    </el-table-column>
+
+                    <el-table-column :label="t('chart.total_sort_field')" align="center" width="90">
+                      <template #default="scope">
+                        <el-checkbox v-model="scope.row.orderChecked" />
                       </template>
                     </el-table-column>
 
@@ -2616,7 +2631,7 @@ const getIconNameCalc = (deType, extField, dimension = false) => {
       label-width="120px"
     >
       <el-form-item prop="name" :label="t('dataset.field_name')">
-        <el-input v-model="currentNormalField.name" />
+        <el-input maxlength="100" v-model="currentNormalField.name" />
       </el-form-item>
     </el-form>
     <template #footer>
@@ -3177,7 +3192,7 @@ const getIconNameCalc = (deType, extField, dimension = false) => {
             position: relative;
 
             :deep(.ed-tree-node__content) {
-              border-radius: 4px;
+              border-radius: 6px;
               &:hover {
                 background: rgba(31, 35, 41, 0.1);
               }
@@ -3441,7 +3456,7 @@ const getIconNameCalc = (deType, extField, dimension = false) => {
   .group-fields_item {
     padding: 16px;
     background: #f5f6f7;
-    border-radius: 4px;
+    border-radius: 6px;
     display: flex;
 
     & + .group-fields_item {

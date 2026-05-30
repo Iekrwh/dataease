@@ -14,7 +14,7 @@ import { hexColorToRGBA, isAlphaColor, parseJson } from '../../../util'
 import { S2ChartView, S2DrawOptions } from '../../types/impl/s2'
 import { TABLE_EDITOR_PROPERTY, TABLE_EDITOR_PROPERTY_INNER } from './common'
 import { useI18n } from '@/hooks/web/useI18n'
-import { filter, isEqual, isNumber, merge } from 'lodash-es'
+import { filter, isEqual, merge } from 'lodash-es'
 import {
   calcTreeWidth,
   calculateGroupHeaderHeight,
@@ -29,6 +29,8 @@ import {
   getRowIndex,
   getStartPosition,
   getSummaryRow,
+  reserveTableRightBorderWidth,
+  isNumeric,
   SortTooltip,
   SummaryCell,
   summaryRowStyle
@@ -125,7 +127,7 @@ export class TableInfo extends S2ChartView<TableSheet> {
           if (value === null || value === undefined) {
             return value
           }
-          if (![2, 3, 4].includes(f.deType) || !isNumber(value)) {
+          if (![2, 3, 4].includes(f.deType) || !isNumeric(value)) {
             return value
           }
           let formatCfg = f.formatterCfg
@@ -183,7 +185,8 @@ export class TableInfo extends S2ChartView<TableSheet> {
         hoverHighlight: !(basicStyle.showHoverStyle === false),
         scrollbarPosition: newData.length
           ? ScrollbarPositionType.CONTENT
-          : ScrollbarPositionType.CANVAS
+          : ScrollbarPositionType.CANVAS,
+        hoverFocus: false
       }
     }
     s2Options.style = this.configStyle(chart, s2DataConfig)
@@ -309,7 +312,7 @@ export class TableInfo extends S2ChartView<TableSheet> {
               n.x = getStartPosition(n)
             }
           })
-          ev.colsHierarchy.width = totalWidth
+          ev.colsHierarchy.width = totalWidth + 1
           newChart.store.set('lastLayoutResult', undefined)
           return
         }
@@ -321,6 +324,8 @@ export class TableInfo extends S2ChartView<TableSheet> {
           return p + (urlFields.includes(n.field) ? 120 : n.width)
         }, 0)
         const containerWidth = containerDom.getBoundingClientRect().width
+        // 预留 1px 给最右侧边框，避免边框被裁剪
+        const availableWidth = containerWidth - 1
         if (containerWidth <= totalWidthWithImg) {
           // 图库计算的布局宽度已经大于等于容器宽度，不需要再扩大，但是需要处理非整数宽度值，不然会出现透明细线
           ev.colLeafNodes.reduce((p, n) => {
@@ -328,13 +333,14 @@ export class TableInfo extends S2ChartView<TableSheet> {
             n.x = p
             return p + n.width
           }, 0)
+          ev.colsHierarchy.width = ev.colLeafNodes.reduce((p, n) => p + n.width, 0) + 1
           return
         }
         // 图片字段固定 120, 剩余宽度按比例均摊到其他字段进行扩大
         const totalWidthWithoutImg = ev.colLeafNodes.reduce((p, n) => {
           return p + (urlFields.includes(n.field) ? 0 : n.width)
         }, 0)
-        const restWidth = containerWidth - urlFields.length * 120
+        const restWidth = availableWidth - urlFields.length * 120
         const scale = restWidth / totalWidthWithoutImg
         const totalWidth = ev.colLeafNodes.reduce((p, n) => {
           n.width = urlFields.includes(n.field) ? 120 : Math.round(n.width * scale)
@@ -348,10 +354,15 @@ export class TableInfo extends S2ChartView<TableSheet> {
             n.x = getStartPosition(n)
           }
         })
-        if (totalWidth > containerWidth) {
-          ev.colLeafNodes[ev.colLeafNodes.length - 1].width -= totalWidth - containerWidth
+        if (totalWidth > availableWidth) {
+          ev.colLeafNodes[ev.colLeafNodes.length - 1].width -= totalWidth - availableWidth
         }
         ev.colsHierarchy.width = containerWidth
+      })
+    }
+    if (basicStyle?.tableColumnMode === 'field') {
+      newChart.on(S2Event.LAYOUT_AFTER_HEADER_LAYOUT, (ev: LayoutResult) => {
+        reserveTableRightBorderWidth(ev, containerDom.getBoundingClientRect().width)
       })
     }
     // 空数据时表格样式
@@ -407,7 +418,7 @@ export class TableInfo extends S2ChartView<TableSheet> {
 
   protected configTheme(chart: Chart): S2Theme {
     const theme = super.configTheme(chart)
-    const { basicStyle, tableCell } = parseJson(chart.customAttr)
+    const { basicStyle, tableCell, tableHeader } = parseJson(chart.customAttr)
     if (tableCell.mergeCells) {
       const tableFontColor = hexColorToRGBA(tableCell.tableFontColor, basicStyle.alpha)
       let tableItemBgColor = tableCell.tableItemBgColor
@@ -465,6 +476,26 @@ export class TableInfo extends S2ChartView<TableSheet> {
       }
       merge(theme, mergeCellTheme)
     }
+    if (tableCell.tableItemAlign === 'custom') {
+      const { alignConfig } = tableCell
+      const alignMap = alignConfig.reduce((p, n) => {
+        p[n.id] = n.align
+        return p
+      }, {})
+      merge(theme, {
+        dataCellAlignConfig: alignMap
+      })
+    }
+    if (tableHeader.tableHeaderAlign === 'custom') {
+      const { alignConfig } = tableHeader
+      const alignMap = alignConfig.reduce((p, n) => {
+        p[n.id] = n.align
+        return p
+      }, {})
+      merge(theme, {
+        colCellAlignConfig: alignMap
+      })
+    }
     return theme
   }
 
@@ -500,8 +531,23 @@ export class TableInfo extends S2ChartView<TableSheet> {
       // 计算汇总加入到数据里，冻结最后一行
       s2Options.frozenTrailingRowCount = 1
       const axis = filter(xAxis, axis => [2, 3, 4].includes(axis.deType))
-      const summaryObj = getSummaryRow(data, axis, basicStyle.seriesSummary) as any
+      const summaryObj = getSummaryRow(
+        data,
+        axis,
+        basicStyle.seriesSummary,
+        chart.data.customSumResult
+      ) as any
       data.push(summaryObj)
+    }
+    const { mergeCells } = tableCell
+    const mergedCellsInfoMap: Record<string, boolean> = {}
+    if (mergeCells) {
+      s2Options.mergedCellsInfo?.reduce((p, n) => {
+        n.forEach(cell => {
+          p[`${cell.rowIndex}-${cell.colIndex}`] = true
+        })
+        return p
+      }, mergedCellsInfoMap)
     }
     s2Options.dataCell = viewMeta => {
       // 总计行处理
@@ -509,10 +555,12 @@ export class TableInfo extends S2ChartView<TableSheet> {
         if (viewMeta.colIndex === 0) {
           if (tableHeader.showIndex) {
             viewMeta.fieldValue = summaryLabel ?? t('chart.total_show')
+            viewMeta.isSummaryLabel = true
           } else {
             // 第一列不是数值类型的，显示总计
             if (![2, 3, 4].includes(xAxis?.[0]?.deType)) {
               viewMeta.fieldValue = summaryLabel ?? t('chart.total_show')
+              viewMeta.isSummaryLabel = true
             }
           }
         }
@@ -533,8 +581,20 @@ export class TableInfo extends S2ChartView<TableSheet> {
       // 配置文本自动换行参数
       viewMeta.autoWrap = tableCell.mergeCells ? false : basicStyle.autoWrap
       viewMeta.maxLines = basicStyle.maxLines
+      // 合并单元格标记
+      if (mergeCells && mergedCellsInfoMap[`${viewMeta.rowIndex}-${viewMeta.colIndex}`]) {
+        viewMeta.isMergedCell = true
+      }
       return new CustomDataCell(viewMeta, viewMeta?.spreadsheet)
     }
+  }
+
+  setupDefaultOptions(chart: ChartObj): ChartObj {
+    const customAttr = parseJson(chart.customAttr)
+    if (customAttr.basicStyle.tableColumnMode === 'colAdapt') {
+      customAttr.basicStyle.tableColumnMode = 'adapt'
+    }
+    return chart
   }
 
   constructor() {

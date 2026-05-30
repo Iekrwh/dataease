@@ -8,6 +8,7 @@ import icon_intersect from '@/assets/svg/icon_intersect.svg'
 import icon_leftAssociation from '@/assets/svg/icon_left-association.svg'
 import icon_rightAssociation from '@/assets/svg/icon_right-association.svg'
 import icon_sql_outlined from '@/assets/svg/icon_sql_outlined.svg'
+import { getCSSVariable } from '@/utils/color'
 import referenceTable from '@/assets/svg/reference-table.svg'
 import icon_moreVertical_outlined from '@/assets/svg/icon_more-vertical_outlined.svg'
 import { reactive, computed, ref, nextTick, inject, type Ref, watch, unref } from 'vue'
@@ -19,7 +20,7 @@ import { guid } from './util'
 import { HandleMore } from '@/components/handle-more'
 import { propTypes } from '@/utils/propTypes'
 import UnionFieldList from './UnionFieldList.vue'
-import type { Node, Field } from './util'
+import { type Node, type Field, num } from './util'
 import { getTableField } from '@/api/dataset'
 import type { SqlNode } from './AddSql.vue'
 import { cloneDeep } from 'lodash-es'
@@ -41,7 +42,7 @@ const props = defineProps({
 })
 
 const primaryColor = computed(() => {
-  return appearanceStore.themeColor === 'custom' ? appearanceStore.customColor : '#3370FF'
+  return appearanceStore.themeColor === 'custom' ? appearanceStore.customColor : getCSSVariable()
 })
 const isCross = inject<Ref>('isCross')
 
@@ -229,7 +230,8 @@ const saveSqlNode = (val: SqlNode, cb) => {
         info: state.visualNode.info,
         tableName,
         type: 'sql',
-        isCross: isCross.value
+        isCross: isCross.value,
+        sqlVariableDetails
       }).then(res => {
         state.visualNode.confirm = true
         state.nodeList.push(state.visualNode)
@@ -250,7 +252,8 @@ const saveSqlNode = (val: SqlNode, cb) => {
         info: state.visualNode.info,
         tableName,
         type: 'sql',
-        isCross: isCross.value
+        isCross: isCross.value,
+        sqlVariableDetails
       }).then(() => {
         state.visualNode.confirm = true
         cb?.()
@@ -266,6 +269,7 @@ const saveSqlNode = (val: SqlNode, cb) => {
     sqlVariableDetails
   }
   dfsNodeBack([obj], [id], state.nodeList)
+  cb?.()
   emits('reGetName')
 }
 
@@ -342,12 +346,11 @@ const closeEditUnion = () => {
   }
   editUnion.value = false
 }
-let num = +new Date()
 
 const setGuid = (arr, id, datasourceId) => {
   arr.forEach(ele => {
     if (!ele.id) {
-      ele.id = `${++num}`
+      ele.id = `${++num.value}`
       ele.datasetTableId = id
       ele.datasourceId = datasourceId
     }
@@ -1309,7 +1312,7 @@ const emits = defineEmits([
   height: 100%;
   width: 100%;
   border: 1px solid #dee0e3;
-  border-radius: 4px;
+  border-radius: 6px;
   font-family: var(--de-custom_font, 'PingFang');
   font-size: 14px;
   font-weight: 400;
@@ -1349,7 +1352,7 @@ const emits = defineEmits([
     left: -1px;
     top: -1px;
     background: var(--ed-color-primary);
-    border-radius: 4px 0px 0px 4px;
+    border-radius: 6px 0px 0px 4px;
   }
 }
 

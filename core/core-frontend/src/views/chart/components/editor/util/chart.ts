@@ -52,6 +52,15 @@ export const DEFAULT_COLOR_CASE: DeepPartial<ChartAttr> = {
     tableItemBgColor: '#FFFFFF',
     tableFontColor: '#000000',
     tableItemSubBgColor: '#EEEEEE'
+  },
+  label: {
+    color: '#000000',
+    fontSize: 12
+  },
+  tooltip: {
+    color: '#000000',
+    fontSize: 12,
+    backgroundColor: '#FFFFFF'
   }
 }
 
@@ -77,6 +86,7 @@ export const DEFAULT_COLOR_CASE_LIGHT: DeepPartial<ChartAttr> = {
     gaugeStyle: 'default',
     tableBorderColor: '#E6E7E4',
     tableScrollBarColor: 'rgba(0, 0, 0, 0.15)',
+    tableEmptyFontColor: '#000',
     zoomButtonColor: '#aaa',
     zoomBackground: '#fff'
   },
@@ -104,6 +114,15 @@ export const DEFAULT_COLOR_CASE_LIGHT: DeepPartial<ChartAttr> = {
     tableItemBgColor: '#FFFFFF',
     tableFontColor: '#000000',
     tableItemSubBgColor: '#1E90FF'
+  },
+  label: {
+    color: '#000000',
+    fontSize: 12
+  },
+  tooltip: {
+    color: '#000000',
+    fontSize: 12,
+    backgroundColor: '#FFFFFF'
   }
 }
 
@@ -129,6 +148,7 @@ export const DEFAULT_COLOR_CASE_DARK: DeepPartial<ChartAttr> = {
     gaugeStyle: 'default',
     tableBorderColor: '#CCCCCC',
     tableScrollBarColor: 'rgba(255, 255, 255, 0.5)',
+    tableEmptyFontColor: '#fff',
     zoomButtonColor: '#fff',
     zoomBackground: '#000'
   },
@@ -155,6 +175,15 @@ export const DEFAULT_COLOR_CASE_DARK: DeepPartial<ChartAttr> = {
     tableItemBgColor: '#131E42',
     tableFontColor: '#ffffff',
     tableItemSubBgColor: '#1E90FF'
+  },
+  label: {
+    color: '#FFFFFF',
+    fontSize: 12
+  },
+  tooltip: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    backgroundColor: '#5A5C62'
   }
 }
 
@@ -179,13 +208,15 @@ export const TAB_COMMON_STYLE_DARK = {
 export const SENIOR_STYLE_SETTING_LIGHT = {
   linkageIconColor: '#a6a6a6',
   drillLayerColor: '#a6a6a6',
-  pagerColor: '#a6a6a6'
+  pagerColor: '#a6a6a6',
+  pagerSize: 14
 }
 
 export const SENIOR_STYLE_SETTING_DARK = {
   linkageIconColor: '#ffffff',
   drillLayerColor: '#ffffff',
-  pagerColor: '#ffffff'
+  pagerColor: '#ffffff',
+  pagerSize: 14
 }
 
 export const FILTER_COMMON_STYLE_BASE = {
@@ -198,7 +229,7 @@ export const FILTER_COMMON_STYLE_LIGHT = {
   labelColor: '#1f2329',
   titleColor: '#1f2329',
   color: '#1f2329',
-  borderColor: '#bbbfc4',
+  borderColor: '#D9DCDF',
   text: '#1f2329',
   bgColor: '#FFFFFF'
 }
@@ -208,7 +239,7 @@ export const FILTER_COMMON_STYLE_DARK = {
   labelColor: '#ffffff',
   titleColor: '#ffffff',
   color: '#FFFFFF',
-  borderColor: '#484747',
+  borderColor: '#505050',
   text: '#AFAFAF',
   bgColor: '#131C42'
 }
@@ -344,7 +375,10 @@ export const DEFAULT_MISC: ChartMiscAttr = {
         symbolSize: 4
       }
     }
-  }
+  },
+  liquidShowBorder: false,
+  liquidBorderWidth: 4,
+  liquidBorderDistance: 8
 }
 
 export const DEFAULT_MARK = {
@@ -480,7 +514,8 @@ export const DEFAULT_TABLE_HEADER: ChartTableHeaderAttr = {
     columns: [],
     meta: []
   },
-  rowHeaderFreeze: true
+  rowHeaderFreeze: true,
+  alignConfig: []
 }
 export const DEFAULT_TABLE_CELL: ChartTableCellAttr = {
   tableFontColor: '#000000',
@@ -498,7 +533,8 @@ export const DEFAULT_TABLE_CELL: ChartTableCellAttr = {
   tableFreeze: false,
   tableColumnFreezeHead: 0,
   tableRowFreezeHead: 0,
-  mergeCells: true
+  mergeCells: true,
+  alignConfig: []
 }
 export const DEFAULT_TITLE_STYLE: ChartTextStyle = {
   show: true,
@@ -548,7 +584,8 @@ export const DEFAULT_INDICATOR_NAME_STYLE: ChartIndicatorNameStyle = {
   fontFamily: 'Microsoft YaHei',
   letterSpace: 0,
   fontShadow: false,
-  nameValueSpacing: 0
+  nameValueSpacing: 0,
+  namePosition: 'bottom'
 }
 
 export const DEFAULT_TITLE_STYLE_BASE: ChartTextStyle = {
@@ -1578,6 +1615,13 @@ export const CHART_TYPE_CONFIGS = [
         value: 'circle-packing',
         title: t('chart.chart_circle_packing'),
         icon: 'circle-packing'
+      },
+      {
+        render: 'antv',
+        category: 'distribute',
+        value: 'multi-scatter',
+        title: '多维散点图',
+        icon: 'multi-scatter'
       }
     ]
   },
@@ -1725,7 +1769,10 @@ export const DEFAULT_BASIC_STYLE: ChartBasicStyle = {
   circleBorderWidth: 0,
   circlePadding: 0,
   quotaPosition: 'col',
-  quotaColLabel: t('dataset.value')
+  quotaColLabel: t('dataset.value'),
+  tableRowHeaderMode: 'adapt',
+  tableRowHeaderWidth: 120,
+  tableRowHeaderWidthPercent: 20
 }
 
 export const BASE_VIEW_CONFIG = {

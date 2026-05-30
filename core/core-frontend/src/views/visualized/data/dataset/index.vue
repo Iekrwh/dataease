@@ -3,7 +3,7 @@ import icon_copy_filled from '@/assets/svg/icon_copy_filled.svg'
 import icon_dataset from '@/assets/svg/icon_dataset.svg'
 import icon_deleteTrash_outlined from '@/assets/svg/icon_delete-trash_outlined.svg'
 import icon_intoItem_outlined from '@/assets/svg/icon_into-item_outlined.svg'
-import { debounce } from 'lodash-es'
+import { throttle } from 'lodash-es'
 import icon_rename_outlined from '@/assets/svg/icon_rename_outlined.svg'
 import dvNewFolder from '@/assets/svg/dv-new-folder.svg'
 import icon_fileAdd_outlined from '@/assets/svg/icon_file-add_outlined.svg'
@@ -138,7 +138,6 @@ const state = reactive({
   curSortType: 'time_desc'
 })
 
-const resourceGroupOpt = ref()
 const curCanvasType = ref('')
 const mounted = ref(false)
 const openType = wsCache.get('open-backend') === '1' ? '_self' : '_blank'
@@ -395,7 +394,6 @@ const closeExport = () => {
 
 const save = ({ logic, items, errorMessage }) => {
   table.value.id = nodeInfo.id
-  table.value.row = 100000
   table.value.filename = exportForm.value.name
   table.value.dataEaseBi = isDataEaseBi.value || appStore.getIsIframe
   if (errorMessage) {
@@ -404,9 +402,10 @@ const save = ({ logic, items, errorMessage }) => {
   }
   table.value.expressionTree = JSON.stringify({ items, logic })
   exportDatasetLoading.value = true
+  const embeddedSyncExport = wsCache.get('embeddedExportMode-backend') !== 'async'
   exportDatasetData(table.value)
     .then(res => {
-      if (isDataEaseBi.value || appStore.getIsIframe) {
+      if ((isDataEaseBi.value || appStore.getIsIframe) && embeddedSyncExport) {
         const blob = new Blob([res.data], { type: 'application/vnd.ms-excel' })
         const link = document.createElement('a')
         link.style.display = 'none'
@@ -761,8 +760,33 @@ const panelLoad = paneInfo => {
 }
 const datasetListTree = ref()
 
+// 预计算可见节点 ID 集合，filterNode 只做 O(1) 查询
+const visibleNodeIds = new Set()
+
+const buildVisibleIds = (nodes: BusiTreeNode[], keyword: string): boolean => {
+  let anyMatch = false
+  for (const node of nodes) {
+    const selfMatch = !!node.name?.toLowerCase().includes(keyword)
+    const childMatch = node.children?.length ? buildVisibleIds(node.children, keyword) : false
+    if (selfMatch || childMatch) {
+      visibleNodeIds.add(node.id)
+      anyMatch = true
+    }
+  }
+  return anyMatch
+}
+
+let searchTimer
 watch(nickName, (val: string) => {
-  datasetListTree.value.filter(val)
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    const keyword = val?.trim().toLowerCase()
+    visibleNodeIds.clear()
+    if (keyword) {
+      buildVisibleIds(state.datasetTree, keyword)
+    }
+    datasetListTree.value.filter(val?.trim())
+  }, 300)
 })
 const sideTreeStatus = ref(true)
 const changeSideTreeStatus = val => {
@@ -770,8 +794,8 @@ const changeSideTreeStatus = val => {
 }
 
 const filterNode = (value: string, data: BusiTreeNode) => {
-  if (!value) return true
-  return data.name?.toLowerCase().includes(value.toLowerCase())
+  if (!value?.trim()) return true
+  return visibleNodeIds.has(data.id)
 }
 const mouseenter = () => {
   appStore.setArrowSide(true)
@@ -793,7 +817,7 @@ const getMenuList = (val: boolean) => {
       ].concat(menuList)
 }
 
-const proxyAllowDrop = debounce((arg1, arg2) => {
+const proxyAllowDrop = throttle((arg1, arg2) => {
   const flagArray = ['dashboard', 'dataV', 'dataset', 'datasource']
   const flag = flagArray.findIndex(item => item === 'dataset')
   if (flag < 0 || !isFreeFolder(arg2, flag + 1)) {
@@ -832,6 +856,7 @@ const proxyAllowDrop = debounce((arg1, arg2) => {
               <el-tooltip
                 class="box-item"
                 effect="dark"
+                offset="14"
                 :content="t('deDataset.new_folder')"
                 placement="top"
               >
@@ -846,6 +871,7 @@ const proxyAllowDrop = debounce((arg1, arg2) => {
               <el-tooltip
                 class="box-item"
                 effect="dark"
+                offset="14"
                 :content="t('data_set.a_new_dataset')"
                 placement="top"
               >
@@ -1192,7 +1218,7 @@ const proxyAllowDrop = debounce((arg1, arg2) => {
     height: 200px;
     width: 100%;
     padding: 16px;
-    border-radius: 4px;
+    border-radius: 6px;
     border: 1px solid var(--deBorderBase, #dcdfe6);
     overflow: auto;
 
@@ -1203,10 +1229,10 @@ const proxyAllowDrop = debounce((arg1, arg2) => {
   }
 }
 .filter-icon-span {
-  border: 1px solid #bbbfc4;
+  border: 1px solid #d9dcdf;
   width: 32px;
   height: 32px;
-  border-radius: 4px;
+  border-radius: 6px;
   color: #1f2329;
   padding: 8px;
   margin-left: 8px;
@@ -1288,6 +1314,17 @@ const proxyAllowDrop = debounce((arg1, arg2) => {
 
           &:hover {
             cursor: pointer;
+            &::after {
+              content: '';
+              background-color: var(--ed-color-primary-1a, #3370ff1a);
+              width: 28px;
+              height: 28px;
+              position: absolute;
+              top: 50%;
+              left: 50%;
+              border-radius: 6px;
+              transform: translate(-50%, -50%);
+            }
           }
         }
       }
@@ -1341,7 +1378,7 @@ const proxyAllowDrop = debounce((arg1, arg2) => {
         font-weight: 500;
 
         .dataset-name {
-          max-width: 200px;
+          max-width: 400px;
         }
 
         .create-user {
@@ -1376,7 +1413,7 @@ const proxyAllowDrop = debounce((arg1, arg2) => {
       padding: 24px;
       margin: 24px;
       background: #fff;
-      border-radius: 4px;
+      border-radius: 6px;
       height: calc(100% - 138px);
     }
 

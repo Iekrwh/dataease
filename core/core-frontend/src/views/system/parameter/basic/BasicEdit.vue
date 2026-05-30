@@ -28,13 +28,19 @@ const pvpOptions = [
   { value: '3', label: t('commons.date.three_months') },
   { value: '4', label: t('commons.date.one_month') }
 ]
+const embeddedExportModeOptions = [
+  { value: 'sync', label: t('setting_basic.exportModeSync') },
+  { value: 'async', label: t('setting_basic.exportModeAsync') }
+]
 const requireKeys = [
   'logLiveTime',
   'thresholdLogLiveTime',
   'exportFileLiveTime',
+  'dataFillingLogLiveTime',
   'frontTimeOut',
   'loginLimitTime',
-  'loginLimitRate'
+  'loginLimitRate',
+  'thresholdLimit'
 ]
 const state = reactive({
   form: reactive({
@@ -50,7 +56,8 @@ const state = reactive({
     { value: '1', label: 'LDAP' },
     { value: '2', label: 'OIDC' },
     { value: '3', label: 'CAS' },
-    { value: '9', label: 'OAuth2' }
+    { value: '9', label: 'OAuth2' },
+    { value: '10', label: 'Saml2' }
   ],
   sortOptions: [
     { value: '0', label: t('resource_sort.time_asc') },
@@ -335,10 +342,24 @@ defineExpose({
             type="number"
           />
         </div>
+        <div v-else-if="item.pkey === 'thresholdLimit'">
+          <el-input-number
+            v-model="state.form.thresholdLimit"
+            autocomplete="off"
+            step-strictly
+            class="text-left edit-all-line"
+            :min="1"
+            :max="50"
+            :placeholder="t('common.inputText')"
+            controls-position="right"
+            type="number"
+          />
+        </div>
         <div
           v-else-if="
             item.pkey === 'logLiveTime' ||
             item.pkey === 'thresholdLogLiveTime' ||
+            item.pkey === 'dataFillingLogLiveTime' ||
             item.pkey === 'loginLimitRate' ||
             item.pkey === 'loginLimitTime'
           "
@@ -418,6 +439,17 @@ defineExpose({
         <div v-else-if="item.pkey === 'defaultOpen'">
           <el-radio-group v-model="state.form[item.pkey]">
             <el-radio v-for="item in state.openOptions" :key="item.value" :label="item.value">
+              {{ item.label }}
+            </el-radio>
+          </el-radio-group>
+        </div>
+        <div v-else-if="item.pkey === 'embeddedExportMode'">
+          <el-radio-group v-model="state.form[item.pkey]">
+            <el-radio
+              v-for="item in embeddedExportModeOptions"
+              :key="item.value"
+              :label="item.value"
+            >
               {{ item.label }}
             </el-radio>
           </el-radio-group>

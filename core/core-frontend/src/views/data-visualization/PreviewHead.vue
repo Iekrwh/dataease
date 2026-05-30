@@ -36,7 +36,13 @@ const openType = wsCache.get('open-backend') === '1' ? '_self' : '_blank'
 const favorited = ref(false)
 const preview = () => {
   const baseUrl = isDataEaseBi.value ? embeddedStore.baseUrl : ''
-  const url = baseUrl + '#/preview?dvId=' + dvInfo.value.id + '&ignoreParams=true'
+  const url =
+    baseUrl +
+    '#/preview?dvId=' +
+    dvInfo.value.id +
+    '&dvType=' +
+    dvInfo.value['type'] +
+    '&ignoreParams=true'
   const newWindow = window.open(url, '_blank')
   initOpenHandler(newWindow)
 }
@@ -106,7 +112,7 @@ const initOpenHandler = newWindow => {
       methodName: 'initOpenHandler',
       args: newWindow
     }
-    openHandler.value.invokeMethod(pm)
+    openHandler.value?.invokeMethod(pm)
   }
 }
 </script>
@@ -252,7 +258,7 @@ const initOpenHandler = newWindow => {
   padding: 16px 24px;
   border-bottom: 1px solid rgba(31, 35, 41, 0.15);
   .canvas-name {
-    max-width: 200px;
+    max-width: 400px;
     font-size: 16px;
     font-weight: 500;
   }
@@ -285,7 +291,7 @@ const initOpenHandler = newWindow => {
       margin-left: 12px;
       cursor: pointer;
       font-size: 20px;
-      border-radius: 4px;
+      border-radius: 6px;
       position: relative;
       &:hover {
         &::after {
@@ -293,7 +299,7 @@ const initOpenHandler = newWindow => {
           position: absolute;
           top: -4px;
           left: -4px;
-          border-radius: 4px;
+          border-radius: 6px;
           height: 28px;
           width: 28px;
           background: #1f23291a;

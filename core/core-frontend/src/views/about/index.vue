@@ -122,7 +122,8 @@ const validateHandler = (param, success) => {
 }
 const getLicense = result => {
   if (result.status === 'valid') {
-    tipsSuffix.value = result?.license?.edition === 'Embedded' ? '套' : '个账号'
+    tipsSuffix.value =
+      result?.license?.edition === 'Enterprise' ? t('about.count_of') : t('about.set_of')
   }
   return {
     status: result.status,
@@ -237,16 +238,16 @@ const update = (licKey: string) => {
 <style lang="less">
 .about-dialog {
   img {
-    border-radius: 4px;
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
   }
   .color-overlay {
     position: absolute;
-    border-radius: 4px;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
     width: 792px;
     height: 180px;
-    top: 72px;
+    top: 64px;
     background-color: #7394f0;
     mix-blend-mode: multiply;
   }
@@ -259,7 +260,7 @@ const update = (licKey: string) => {
   }
 
   .content {
-    border-radius: 4px;
+    border-radius: 6px;
     border: 1px solid #dee0e3;
     border-top-left-radius: 0;
     border-top-right-radius: 0;

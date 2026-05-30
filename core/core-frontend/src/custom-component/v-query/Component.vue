@@ -10,6 +10,8 @@ import { ElMessage } from 'element-plus-secondary'
 import { snapshotStoreWithOut } from '@/store/modules/data-visualization/snapshot'
 import QueryConditionConfiguration from './QueryConditionConfiguration.vue'
 import type { ComponentInfo } from '@/api/chart'
+import { getDynamicRange, getCustomTime } from '@/custom-component/v-query/time-format'
+import { getCustomRange } from '@/custom-component/v-query/time-format-dayjs'
 import { infoFormat } from './options'
 import {
   onBeforeUnmount,
@@ -32,6 +34,7 @@ import { dvMainStoreWithOut } from '@/store/modules/data-visualization/dvMain'
 import { comInfo } from './com-info'
 import { useEmitt } from '@/hooks/web/useEmitt'
 import StyleInject from './StyleInject.vue'
+import { getKeyList, reRenderAll } from '@/custom-component/v-query/QueryUtils'
 const props = defineProps({
   view: {
     type: Object,
@@ -65,7 +68,8 @@ const { element, view, scale } = toRefs(props)
 const { t } = useI18n()
 const vQueryRef = ref()
 const dvMainStore = dvMainStoreWithOut()
-const { curComponent, canvasViewInfo, mobileInPc, firstLoadMap } = storeToRefs(dvMainStore)
+const { curComponent, canvasViewInfo, mobileInPc, firstLoadMap, editMode } =
+  storeToRefs(dvMainStore)
 const canEdit = ref(false)
 const queryConfig = ref()
 const defaultStyle = {
@@ -98,7 +102,25 @@ const defaultStyle = {
 }
 const customStyle = reactive({ ...defaultStyle })
 const snapshotStore = snapshotStoreWithOut()
+let instanceElMessage = null
+let closeTime = null
 
+const closeElMessage = requiredName => {
+  if (instanceElMessage) {
+    instanceElMessage.close()
+  }
+  instanceElMessage = ElMessage({
+    message: `【${requiredName}】${t('v_query.before_querying')}`,
+    type: 'error'
+  })
+
+  if (closeTime) {
+    clearTimeout(closeTime)
+  }
+  closeTime = setTimeout(() => {
+    instanceElMessage.close()
+  }, 2000)
+}
 const btnStyle = computed(() => {
   const style = {
     color: customStyle.labelColorBtn
@@ -300,11 +322,17 @@ watch(
   }
 )
 const list = ref([])
-
+let oldList = []
+let isResetData = false
 watch(
   () => props.element.propValue,
   () => {
     list.value = [...props.element.propValue]
+    if (isResetData) {
+      isResetData = false
+      return
+    }
+    oldList = cloneDeep(props.element.propValue)
   },
   {
     immediate: true
@@ -329,29 +357,6 @@ onBeforeMount(() => {
 
 const releaseSelect = id => {
   unMountSelect.value = unMountSelect.value.filter(ele => ele !== id)
-}
-
-const getKeyList = next => {
-  let checkedFieldsMapArr = Object.entries(next.checkedFieldsMap).filter(ele =>
-    next.checkedFields.includes(ele[0])
-  )
-  if (next.displayType === '9') {
-    checkedFieldsMapArr = (
-      next.treeCheckedList?.length
-        ? next.treeCheckedList.filter((_, index) => index < next.treeFieldList.length)
-        : next.treeFieldList.map(() => {
-            return {
-              checkedFields: [...next.checkedFields],
-              checkedFieldsMap: cloneDeep(next.checkedFieldsMap)
-            }
-          })
-    )
-      .map(item =>
-        Object.entries(item.checkedFieldsMap).filter(ele => item.checkedFields.includes(ele[0]))
-      )
-      .flat()
-  }
-  return checkedFieldsMapArr.filter(ele => !!ele[1]).map(ele => ele[0])
 }
 
 const fillRequireVal = arr => {
@@ -452,7 +457,7 @@ const queryDataForId = id => {
       return pre
     }, [])
   if (!!requiredName) {
-    ElMessage.error(`【${requiredName}】${t('v_query.before_querying')}`)
+    closeElMessage(requiredName)
     return
   }
   if (!!numName) {
@@ -470,7 +475,17 @@ const getQueryConditionWidth = () => {
 }
 
 const getCascadeList = () => {
-  return props.element.cascade
+  const { propValue, cascade = [] } = props.element
+  const defaultValueFirstItemMap = propValue.reduce((pre, next) => {
+    pre[next.id] = next.defaultValueFirstItem
+    return pre
+  }, {})
+  cascade.forEach(itx => {
+    itx.forEach(ele => {
+      ele.defaultValueFirstItem = defaultValueFirstItemMap[ele.datasetId.split('--')[1]]
+    })
+  })
+  return cascade
 }
 
 const getPlaceholder = computed(() => {
@@ -484,15 +499,64 @@ const isConfirmSearch = (id, disabledFirstItem = false) => {
   queryDataForId(id)
 }
 
+const isConfirmSearchNoRequiredName = id => {
+  if (componentWithSure.value) return
+  let requiredName = ''
+  let numName = ''
+  const emitterList = (element.value.propValue || [])
+    .filter(ele => ele.id === id)
+    .reduce((pre, next) => {
+      if (next.displayType === '22') {
+        if (
+          !isNaN(next.numValueEnd) &&
+          !isNaN(next.numValueStart) &&
+          next.numValueEnd < next.numValueStart
+        ) {
+          numName = next.name
+        }
+        if (
+          [next.numValueEnd, next.numValueStart].filter(itx => ![null, undefined, ''].includes(itx))
+            .length === 1
+        ) {
+          requiredName = next.name
+        }
+      }
+
+      const keyList = getKeyList(next)
+      pre = [...new Set([...keyList, ...pre])]
+      return pre
+    }, [])
+  if (!!requiredName) {
+    closeElMessage(requiredName)
+    return
+  }
+  if (!!numName) {
+    ElMessage.error(`【${numName}】${t('v_query.the_minimum_value')}`)
+    return
+  }
+  if (!emitterList.length) return
+  fillRequireVal(emitterList)
+  emitterList.forEach(ele => {
+    emitter.emit(`query-data-${ele}`)
+  })
+}
+
 provide('is-confirm-search', isConfirmSearch)
 provide('unmount-select', unMountSelect)
 provide('release-unmount-select', releaseSelect)
 provide('query-data-for-id', queryDataForId)
+provide('query-data-for-id-tree', isConfirmSearchNoRequiredName)
 provide('com-width', getQueryConditionWidth)
 provide('cascade-list', getCascadeList)
 provide('placeholder', getPlaceholder)
 
 onBeforeUnmount(() => {
+  if (instanceElMessage) {
+    instanceElMessage.close()
+  }
+  if (closeTime) {
+    clearTimeout(closeTime)
+  }
   emitter.off(`addQueryCriteria${element.value.id}`)
   emitter.off(`editQueryCriteria${element.value.id}`)
   emitter.off(`updateQueryCriteria${element.value.id}`)
@@ -594,20 +658,6 @@ const addCriteriaConfigOut = () => {
   queryConfig.value.setConditionOut()
 }
 
-const reRenderAll = (oldArr, newArr) => {
-  const newArrIds = newArr.map(ele => ele.id)
-  const emitterList = (oldArr || []).reduce((pre, next) => {
-    if (newArrIds.includes(next.id)) return pre
-    const keyList = getKeyList(next)
-    pre = [...new Set([...keyList, ...pre])]
-    return pre
-  }, [])
-  if (!emitterList.length) return
-  emitterList.forEach(ele => {
-    emitter.emit(`query-data-${ele}`)
-  })
-}
-
 const delQueryConfig = index => {
   const com = cloneDeep(unref(list))
   list.value.splice(index, 1)
@@ -617,43 +667,101 @@ const delQueryConfig = index => {
 }
 
 const resetData = () => {
-  ;(list.value || []).reduce((pre, next) => {
-    next.conditionValueF = next.defaultConditionValueF
-    next.conditionValueOperatorF = next.defaultConditionValueOperatorF
-    next.conditionValueS = next.defaultConditionValueS
-    next.conditionValueOperatorS = next.defaultConditionValueOperatorS
+  isResetData = true
+  element.value.propValue = []
+  nextTick(() => {
+    element.value.propValue = cloneDeep(oldList)
+    ;(element.value.propValue || []).reduce((pre, next) => {
+      next.conditionValueF = next.defaultConditionValueF
+      next.conditionValueOperatorF = next.defaultConditionValueOperatorF
+      next.conditionValueS = next.defaultConditionValueS
+      next.conditionValueOperatorS = next.defaultConditionValueOperatorS
 
-    if (next.displayType === '22') {
-      next.numValueEnd = next.defaultNumValueEnd
-      next.numValueStart = next.defaultNumValueStart
-    }
+      if (next.displayType === '22') {
+        next.numValueEnd = next.defaultNumValueEnd
+        next.numValueStart = next.defaultNumValueStart
+      }
 
-    if (!next.defaultValueCheck) {
-      next.defaultValue = next.multiple || +next.displayType === 7 ? [] : undefined
-    }
-    next.selectValue = Array.isArray(next.defaultValue) ? [...next.defaultValue] : next.defaultValue
-    if (next.optionValueSource === 1 && next.defaultMapValue?.length) {
-      next.mapValue = Array.isArray(next.defaultMapValue)
-        ? [...next.defaultMapValue]
-        : next.defaultMapValue
-    }
+      if (!next.defaultValueCheck) {
+        next.defaultValue = next.multiple || +next.displayType === 7 ? [] : undefined
+      }
+      next.selectValue = Array.isArray(next.defaultValue)
+        ? [...next.defaultValue]
+        : next.defaultValue
+      if (next.optionValueSource === 1 && next.defaultMapValue?.length) {
+        next.mapValue = Array.isArray(next.defaultMapValue)
+          ? [...next.defaultMapValue]
+          : next.defaultMapValue
+      }
 
-    ;(props.element.cascade || []).forEach(ele => {
-      ele.forEach(item => {
-        const comId = item.datasetId.split('--')[1]
-        if (next.id === comId) {
-          item.currentSelectValue = Array.isArray(next.selectValue)
-            ? next.selectValue
-            : [next.selectValue].filter(itx => ![null, undefined].includes(itx))
-          useEmitt().emitter.emit(`${item.datasetId.split('--')[1]}-select`)
+      if (
+        next.defaultValueCheck &&
+        [1, 7].includes(+next.displayType) &&
+        next.timeType === 'dynamic'
+      ) {
+        if (+next.displayType === 1) {
+          let selectValue = getDynamicRange(next) || []
+          next.defaultValue = new Date(selectValue[0])
+          next.selectValue = new Date(selectValue[0])
+        } else {
+          const {
+            timeNum,
+            relativeToCurrentType,
+            around,
+            relativeToCurrentRange,
+            arbitraryTime,
+            timeGranularity,
+            timeNumRange,
+            relativeToCurrentTypeRange,
+            aroundRange,
+            timeGranularityMultiple,
+            arbitraryTimeRange
+          } = next
+
+          let startTime = getCustomTime(
+            timeNum,
+            relativeToCurrentType,
+            timeGranularity,
+            around,
+            arbitraryTime,
+            timeGranularityMultiple,
+            'start-panel'
+          )
+          let endTime = getCustomTime(
+            timeNumRange,
+            relativeToCurrentTypeRange,
+            timeGranularity,
+            aroundRange,
+            arbitraryTimeRange,
+            timeGranularityMultiple,
+            'end-panel'
+          )
+
+          if (!!relativeToCurrentRange && relativeToCurrentRange !== 'custom') {
+            ;[startTime, endTime] = getCustomRange(relativeToCurrentRange)
+          }
+          next.defaultValue = [startTime, endTime]
+          next.selectValue = [startTime, endTime]
         }
+      }
+
+      ;(props.element.cascade || []).forEach(ele => {
+        ele.forEach(item => {
+          const comId = item.datasetId.split('--')[1]
+          if (next.id === comId) {
+            item.currentSelectValue = Array.isArray(next.selectValue)
+              ? next.selectValue
+              : [next.selectValue].filter(itx => ![null, undefined].includes(itx))
+            useEmitt().emitter.emit(`${item.datasetId.split('--')[1]}-select`)
+          }
+        })
       })
-    })
-    const keyList = getKeyList(next)
-    pre = [...new Set([...keyList, ...pre])]
-    return pre
-  }, [])
-  !componentWithSure.value && queryData()
+      const keyList = getKeyList(next)
+      pre = [...new Set([...keyList, ...pre])]
+      return pre
+    }, [])
+    !componentWithSure.value && queryData()
+  })
 }
 
 const clearData = () => {
@@ -768,7 +876,7 @@ const queryData = () => {
     return pre
   }, [])
   if (!!requiredName) {
-    ElMessage.error(`【${requiredName}】${t('v_query.before_querying')}`)
+    closeElMessage(requiredName)
     return
   }
 
@@ -890,7 +998,11 @@ const autoStyle = computed(() => {
               </div>
               <div
                 class="label-wrapper-tooltip"
-                v-if="showPosition !== 'preview' && !dvMainStore.mobileInPc"
+                v-if="
+                  !['preview', 'edit-preview'].includes(showPosition) &&
+                  !dvMainStore.mobileInPc &&
+                  editMode === 'edit'
+                "
               >
                 <el-tooltip
                   effect="dark"
@@ -1158,7 +1270,7 @@ const autoStyle = computed(() => {
             padding: 4px 8px;
             height: 26px;
             width: 58px;
-            border-radius: 4px;
+            border-radius: 6px;
             border: 1px solid #dee0e3;
             background: #fff;
             box-shadow: 0px 4px 8px 0px rgba(31, 35, 41, 0.1);
@@ -1211,7 +1323,7 @@ const autoStyle = computed(() => {
             padding: 4px 8px;
             height: 26px;
             width: 58px;
-            border-radius: 4px;
+            border-radius: 6px;
             border: 1px solid #dee0e3;
             background: #fff;
             box-shadow: 0px 4px 8px 0px rgba(31, 35, 41, 0.1);

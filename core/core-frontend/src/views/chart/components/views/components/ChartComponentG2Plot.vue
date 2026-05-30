@@ -7,7 +7,8 @@ import {
   reactive,
   ref,
   shallowRef,
-  toRefs
+  toRefs,
+  watch
 } from 'vue'
 import { getData } from '@/api/chart'
 import { ChartLibraryType } from '@/views/chart/components/js/panel/types'
@@ -29,6 +30,8 @@ import { L7ChartView } from '@/views/chart/components/js/panel/types/impl/l7'
 import { useI18n } from '@/hooks/web/useI18n'
 import { ExportImage } from '@antv/l7'
 import { configEmptyDataStyle } from '@/views/chart/components/js/panel/common/common_antv'
+import { hasNextDrillLevel } from '@/views/chart/components/views/util/drill'
+import { ElMessage } from 'element-plus-secondary'
 const { t } = useI18n()
 const dvMainStore = dvMainStoreWithOut()
 const { nowPanelTrackInfo, nowPanelJumpInfo, mobileInPc, embeddedCallBack, inMobile } =
@@ -277,15 +280,22 @@ const calcData = async (view, callback) => {
           if (!res?.drillFilters?.length) {
             dynamicAreaId.value = ''
             scope = null
+            gadmName = null
           } else {
-            const extra = view.chartExtRequest?.drill?.[res?.drillFilters?.length - 1].extra
+            const chartExtRequest = view.chartExtRequest || view.value?.chartExtRequest
+            const extra = chartExtRequest?.drill?.[res?.drillFilters?.length - 1].extra
             dynamicAreaId.value = extra?.adcode + ''
             scope = extra?.scope
+            gadmName = extra?.gadmName
             // 地图
             const map = parseJson(view.customAttr)?.map
             if (map) {
               let areaId = map.id
               country.value = areaId.slice(0, 3)
+              // 世界下钻到国家，切换路径
+              if (country.value === '000' || dynamicAreaId.value?.startsWith('000')) {
+                country.value = chartExtRequest?.drill?.[0]?.extra?.adcode
+              }
             }
             if (!dynamicAreaId.value?.startsWith(country.value)) {
               if (country.value === 'cus') {
@@ -353,6 +363,7 @@ const renderG2Plot = async (chart, chartView: G2PlotChartView<any, any>) => {
       // 在这里清理掉之前图表的空dom
       configEmptyDataStyle([1], containerId)
       myChart?.destroy()
+      chart.container = containerId
       myChart = await chartView.drawChart({
         chartObj: myChart,
         container: containerId,
@@ -373,6 +384,7 @@ const renderG2Plot = async (chart, chartView: G2PlotChartView<any, any>) => {
 
 const dynamicAreaId = ref('')
 const country = ref('')
+let gadmName
 const chartContainer = ref<HTMLElement>(null)
 let scope
 let mapTimer: number
@@ -391,6 +403,9 @@ const renderL7Plot = async (chart: ChartObj, chartView: L7PlotChartView<any, any
   }
   mapTimer && clearTimeout(mapTimer)
   mapTimer = setTimeout(async () => {
+    if (myChart?.tooltip && typeof myChart.tooltip.destroy !== 'function') {
+      myChart.tooltip = null
+    }
     myChart?.destroy()
     if (chartContainer.value) {
       chartContainer.value.textContent = ''
@@ -401,7 +416,8 @@ const renderL7Plot = async (chart: ChartObj, chartView: L7PlotChartView<any, any
       chart,
       areaId,
       action,
-      scope
+      scope,
+      gadmName
     })
     callback?.()
     emit('resetLoading')
@@ -412,6 +428,7 @@ let mapL7Timer: number
 const renderL7 = async (chart: ChartObj, chartView: L7ChartView<any, any>, callback) => {
   mapL7Timer && clearTimeout(mapL7Timer)
   mapL7Timer = setTimeout(async () => {
+    chart.container = containerId
     myChart = await chartView.drawChart({
       chartObj: myChart,
       container: containerId,
@@ -462,6 +479,10 @@ const action = param => {
     group: state.pointParam.data.group ? state.pointParam.data.group : 'NO_DATA'
   }
   if (trackMenu.value.length < 2) {
+    if (view.value.drillFields.length > 0 && trackMenu.value.length === 0) {
+      ElMessage.error(t('chart.last_layer'))
+      return
+    }
     // 只有一个事件直接调用
     trackClick(trackMenu.value[0])
   } else {
@@ -560,6 +581,9 @@ const trackClick = trackAction => {
   let quotaList = state.pointParam.data.quotaList
   if (['bar-range', 'bullet-graph'].includes(curView.type)) {
     quotaList = state.pointParam.data.dimensionList
+  } else if (curView.type === 'multi-scatter') {
+    // 多维散点图 dimensionList 包含颜色维度+横轴+纵轴的值
+    quotaList = []
   } else {
     quotaList[0]['value'] = state.pointParam.data.value
   }
@@ -651,7 +675,10 @@ const trackMenu = computed(() => {
       (!mobileInPc.value || inMobile.value) &&
       trackMenuInfo.push('jump')
     linkageCount && view.value?.linkageActive && trackMenuInfo.push('linkage')
-    view.value.drillFields.length && trackMenuInfo.push('drill')
+    hasNextDrillLevel(
+      curView?.drillFields || view.value.drillFields,
+      curView?.drillFilters?.length || 0
+    ) && trackMenuInfo.push('drill')
     // 如果同时配置jump linkage drill 切配置联动时同时下钻 在实际只显示两个 '跳转' '联动和下钻'
     if (trackMenuInfo.length === 3 && props.element.actionSelection.linkageActive === 'auto') {
       trackMenuInfo = ['jump', 'linkageAndDrill']
@@ -712,9 +739,19 @@ const preparePicture = id => {
     })
     scene.addControl(zoom)
     zoom.hide()
-    zoom.getImage().then(res => {
+    // 天地图
+    const getTmapImage = async () => {
+      const res = await scene.exportPng('png')
       canvas2Picture(res, true)
-    })
+    }
+    zoom
+      .getImage()
+      .then(res => {
+        canvas2Picture(res, true)
+      })
+      .catch(() => {
+        getTmapImage()
+      })
   }
 }
 const unPreparePicture = id => {
@@ -776,7 +813,10 @@ onMounted(() => {
       return
     }
     if (entry.intersectionRatio <= 0) {
-      myChart?.emit('tooltip:hidden')
+      // G2Plot 图表使用 emit，L7/L7Plot 图表没有 emit 方法
+      if (myChart && typeof myChart.emit === 'function') {
+        myChart.emit('tooltip:hidden')
+      }
     }
   })
   intersectionObserver.observe(containerDom)
@@ -801,6 +841,32 @@ onBeforeUnmount(() => {
     console.warn(e)
   }
 })
+
+/**
+ * 监听图表选中状态,处理地图在移动端的交互
+ * active = true 时：图表选中 → 事件穿透画布容器，不拦截，能够直接与画布交互
+ * active = false 时：图表未选中 → 画布容器正常响应事件，能够滑动页面
+ */
+watch(
+  () => props.active,
+  newVal => {
+    if (!MAP_CHARTS.includes(view.value.type) || !isMobile()) return
+    const containerDiv = document.getElementById(containerId)
+    if (!containerDiv) return
+    // 腾讯 / 天地图：容器配置 pointer-events
+    const isQQOrTianMap = !!containerDiv.style.pointerEvents
+    const containerEvents = newVal ? 'auto' : 'none'
+    const sceneEvents = isQQOrTianMap ? containerEvents : newVal ? 'none' : 'auto'
+    if (isQQOrTianMap) {
+      containerDiv.style.pointerEvents = containerEvents
+    }
+    containerDiv
+      .querySelectorAll<HTMLElement>('.l7-scene')
+      .forEach(el => (el.style.pointerEvents = sceneEvents))
+    // 容器添加活跃标识，方便后续样式调整
+    containerDiv.setAttribute('de-chart-active', String(newVal))
+  }
+)
 </script>
 
 <template>

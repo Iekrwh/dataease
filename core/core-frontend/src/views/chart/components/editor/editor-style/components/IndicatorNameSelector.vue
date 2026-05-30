@@ -34,7 +34,7 @@ const props = defineProps({
 
 const emit = defineEmits(['onIndicatorNameChange'])
 const toolTip = computed(() => {
-  return props.themes === 'dark' ? 'light' : 'dark'
+  return props.themes || 'dark'
 })
 const predefineColors = COLOR_PANEL
 const fontFamily = CHART_FONT_FAMILY_ORIGIN.concat(
@@ -44,6 +44,11 @@ const fontFamily = CHART_FONT_FAMILY_ORIGIN.concat(
   }))
 )
 const fontLetterSpace = CHART_FONT_LETTER_SPACE
+
+const namePositionList = [
+  { name: t('chart.name_position_top'), value: 'top' },
+  { name: t('chart.name_position_bottom'), value: 'bottom' }
+]
 
 const state = reactive({
   indicatorNameForm: JSON.parse(JSON.stringify(DEFAULT_INDICATOR_NAME_STYLE)),
@@ -174,7 +179,11 @@ defineExpose({ getFormData })
           </el-tooltip>
         </el-form-item>
 
-        <el-form-item class="form-item" :class="'form-item-' + themes" style="padding-left: 4px">
+        <el-form-item
+          class="form-item"
+          :class="'form-item-' + themes"
+          style="width: 106px; padding-left: 4px"
+        >
           <el-select
             size="small"
             :effect="themes"
@@ -275,6 +284,27 @@ defineExpose({ getFormData })
           @change="changeTitleStyle('nameValueSpacing')"
         />
       </el-form-item>
+      <el-form-item
+        class="form-item name-value-spacing-input"
+        :class="'form-item-' + themes"
+        :label="t('chart.name_position')"
+      >
+        <el-select
+          :effect="themes"
+          v-model="state.indicatorNameForm.namePosition"
+          size="small"
+          style="width: 100%"
+          @change="changeTitleStyle('namePosition')"
+        >
+          <el-option
+            class="custom-style-option"
+            v-for="option in namePositionList"
+            :key="option.value"
+            :label="option.name"
+            :value="option.value"
+          />
+        </el-select>
+      </el-form-item>
     </el-form>
   </div>
 </template>
@@ -289,7 +319,7 @@ defineExpose({ getFormData })
   width: 24px;
   height: 24px;
   text-align: center;
-  border-radius: 4px;
+  border-radius: 6px;
   padding-top: 4px;
 
   color: #1f2329;

@@ -61,7 +61,7 @@ import ChartError from '@/views/chart/components/views/components/ChartError.vue
 import { useEmitt } from '@/hooks/web/useEmitt'
 import { valueFormatter } from '@/views/chart/components/js/formatter'
 import { parseJson } from '@/views/chart/components/js/util'
-import { mappingColor } from '@/views/chart/components/js/panel/common/common_table'
+import { mappingColorCustom } from '@/views/chart/components/js/panel/common/common_table'
 import { CHART_FONT_FAMILY_ORIGIN } from '@/views/chart/components/editor/util/chart'
 import { useAppearanceStoreWithOut } from '@/store/modules/appearance'
 const snapshotStore = snapshotStoreWithOut()
@@ -130,6 +130,7 @@ const language_map = {
   tw: 'zh_TW',
   'zh-CN': 'zh_CN'
 }
+
 const language = language_map[userStore.getLanguage]
 const dataRowSelect = ref({})
 const dataRowNameSelect = ref({})
@@ -180,6 +181,9 @@ const init = ref({
   outer_placeholder: outerPlaceholder,
   inline: true, // 开启内联模式
   branding: false,
+  relative_urls: false,
+  remove_script_host: false,
+  convert_urls: false,
   icons: 'vertical-content',
   vertical_align: element.value.propValue.verticalAlign,
   table_default_styles: {
@@ -382,7 +386,7 @@ const assignment = content => {
     if (on) {
       const thresholdStyleInfo = conditionAdaptor(state.viewDataInfo)
       on.forEach(itm => {
-        if (dataRowFiledName.value.includes(itm)) {
+        if (dataRowFiledName.value.includes(decodeHTMLEntities(itm))) {
           const ele = itm.slice(1, -1)
           let value =
             dataRowNameSelect.value[ele] !== undefined ? dataRowNameSelect.value[ele] : null
@@ -410,6 +414,22 @@ const assignment = content => {
   }
 
   return content
+}
+
+const decodeHTMLEntities = text => {
+  if (!text) return text
+
+  const textarea = document.createElement('textarea')
+  textarea.innerHTML = text
+  return textarea.value
+}
+
+const encodeHTMLEntities = text => {
+  if (!text) return text
+
+  const textarea = document.createElement('textarea')
+  textarea.textContent = text
+  return textarea.innerHTML
 }
 const initFontFamily = htmlText => {
   const regex = /font-family:\s*([^;"]+);/g
@@ -694,6 +714,18 @@ const conditionAdaptor = (chart: Chart) => {
   if (!threshold.enable) {
     return
   }
+
+  const idNameMapping = {}
+  if (chart.xAxis && Array.isArray(chart.xAxis)) {
+    chart.xAxis.forEach(item => {
+      idNameMapping[item.id] = item.name
+    })
+  }
+  if (chart.yAxis && Array.isArray(chart.yAxis)) {
+    chart.yAxis.forEach(item => {
+      idNameMapping[item.id] = item.name
+    })
+  }
   const res = {}
   const conditions = threshold.tableThreshold ?? []
   if (conditions?.length > 0) {
@@ -701,19 +733,21 @@ const conditionAdaptor = (chart: Chart) => {
       const field = conditions[i]
       let defaultValueColor = 'none'
       let defaultBgColor = 'none'
-      res[field.field.name] = {
-        color: mappingColor(
-          dataRowNameSelectSource.value[field.field.name],
-          defaultValueColor,
-          field,
-          'color'
-        ),
-        backgroundColor: mappingColor(
-          dataRowNameSelectSource.value[field.field.name],
-          defaultBgColor,
-          field,
-          'backgroundColor'
-        )
+      const colorCondition = mappingColorCustom(
+        dataRowNameSelectSource.value[field.field.name],
+        defaultValueColor,
+        field,
+        'color'
+      )
+      const backgroundColorCondition = mappingColorCustom(
+        dataRowNameSelectSource.value[field.field.name],
+        defaultBgColor,
+        field,
+        'backgroundColor'
+      )
+      res[idNameMapping[colorCondition.targetFieldId] || field.field.name] = {
+        color: colorCondition.color,
+        backgroundColor: backgroundColorCondition.color
       }
     }
   }
@@ -797,7 +831,7 @@ defineExpose({
 
 <style lang="less">
 .tox {
-  border-radius: 4px !important;
+  border-radius: 6px !important;
   border-bottom: 1px solid #ccc !important;
   z-index: 1000;
 }

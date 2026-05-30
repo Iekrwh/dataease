@@ -221,6 +221,9 @@ export class Quadrant extends G2PlotChartView<ScatterOptions, G2Scatter> {
     const { Scatter: G2Scatter } = await import('@antv/g2plot/esm/plots/scatter')
     const newChart = new G2Scatter(container, options)
     newChart.on('point:click', action)
+    if (options.label) {
+      newChart.on('label:click', action)
+    }
     newChart.on('click', () => quadrantDefaultBaseline(defaultBaselineQuadrant))
     newChart.on('afterrender', () => quadrantDefaultBaseline(defaultBaselineQuadrant))
     const yAxis = parseJson(chart.customStyle).yAxis
@@ -400,7 +403,7 @@ export class Quadrant extends G2PlotChartView<ScatterOptions, G2Scatter> {
         }
         return result
       },
-      container: getTooltipContainer(`tooltip-${chart.id}`),
+      container: getTooltipContainer(`tooltip-${chart.id}`, chart.container),
       itemTpl: TOOLTIP_TPL,
       enterable: true
     }

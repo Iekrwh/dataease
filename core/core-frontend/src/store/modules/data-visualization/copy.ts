@@ -128,7 +128,10 @@ export const copyStore = defineStore('copy', {
           if (dvInfo.value.type === 'dashboard') {
             eventBus.emit('addDashboardItem-' + newComponent.canvasId, newComponent)
           }
-          if (i === dataArray.length - 1) {
+          if (
+            i === dataArray.length - 1 &&
+            (dataArray.length === 1 || (dataArray.length > 1 && dvInfo.value.type === 'dashboard'))
+          ) {
             dvMainStore.setCurComponent({
               component: newComponent,
               index: componentData.value.length - 1
@@ -210,7 +213,6 @@ function deepCopyHelper(data, idMap) {
   result.inMobile = false
   delete result.mStyle
   delete result.mEvents
-  delete result.mPropValue
   delete result.mCommonBackground
   if (result.component === 'VQuery') {
     result.propValue?.forEach(queryItem => {

@@ -20,16 +20,18 @@
             :label="t('visualization.inner_padding')"
             class="form-item w100"
             :class="'form-item-' + themes"
+          ></el-form-item>
+          <el-form-item
+            :label="t('visualization.inner_padding_shorthand_mode')"
+            class="form-item w100"
+            :class="'form-item-' + themes"
           >
             <div style="display: flex; align-items: center; width: 100%; margin-bottom: 8px">
-              <span style="width: 15%; padding-right: 8px">{{
-                t('visualization.inner_padding_shorthand_mode')
-              }}</span>
               <el-select
                 :effect="themes"
                 v-model="state.commonBackground.innerPadding.mode"
                 size="small"
-                style="width: 85%"
+                style="width: 100%"
                 @change="onBackgroundChange"
               >
                 <el-option
@@ -116,15 +118,17 @@
             class="form-item w100"
             :class="'form-item-' + themes"
           >
+          </el-form-item>
+          <el-form-item
+            :label="t('visualization.corner_shorthand_mode')"
+            class="form-item w100"
+            :class="'form-item-' + themes"
+          >
             <div style="display: flex; align-items: center; width: 100%; margin-bottom: 8px">
-              <span style="width: 15%; padding-right: 8px">{{
-                t('visualization.corner_shorthand_mode')
-              }}</span>
               <el-select
                 :effect="themes"
                 v-model="state.commonBackground.borderRadius.mode"
                 size="small"
-                style="width: 85%"
                 @change="onBackgroundChange"
               >
                 <el-option
@@ -139,7 +143,7 @@
             <el-row :gutter="8">
               <el-col :span="12">
                 <div style="display: flex; align-items: center; margin-bottom: 8px">
-                  <span style="width: 30%; padding-right: 8px">{{
+                  <span style="width: 30%; padding-right: 6px">{{
                     t('visualization.corner_top_left')
                   }}</span>
                   <el-input-number
@@ -153,7 +157,7 @@
                   />
                 </div>
                 <div style="display: flex; align-items: center">
-                  <span style="width: 30%; padding-right: 8px">{{
+                  <span style="width: 30%; padding-right: 6px">{{
                     t('visualization.corner_bottom_left')
                   }}</span>
                   <el-input-number
@@ -170,7 +174,7 @@
               </el-col>
               <el-col :span="12">
                 <div style="display: flex; align-items: center; margin-bottom: 8px">
-                  <span style="width: 30%; padding-right: 8px">{{
+                  <span style="width: 30%; padding-right: 6px">{{
                     t('visualization.corner_top_right')
                   }}</span>
                   <el-input-number
@@ -185,7 +189,7 @@
                   />
                 </div>
                 <div style="display: flex; align-items: center">
-                  <span style="width: 30%; padding-right: 8px">{{
+                  <span style="width: 30%; padding-right: 6px">{{
                     t('visualization.corner_bottom_right')
                   }}</span>
                   <el-input-number
@@ -618,7 +622,7 @@ watch(
   :deep(.ed-upload--picture-card) {
     background: #eff0f1;
     border: 1px dashed #dee0e3;
-    border-radius: 4px;
+    border-radius: 6px;
 
     .ed-icon {
       color: #1f2329;
@@ -671,7 +675,7 @@ watch(
   :deep(.ed-upload--picture-card) {
     background: #eff0f1;
     border: 1px dashed #dee0e3;
-    border-radius: 4px;
+    border-radius: 6px;
 
     .ed-icon {
       color: #1f2329;

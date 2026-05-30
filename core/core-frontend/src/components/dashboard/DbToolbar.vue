@@ -149,7 +149,8 @@ const previewOuter = () => {
     return
   }
   canvasSave(() => {
-    let url = '#/preview?dvId=' + dvInfo.value.id + '&ignoreParams=true&editPreview=true'
+    let url =
+      '#/preview?dvId=' + dvInfo.value.id + '&dvType=dashboard&ignoreParams=true&editPreview=true'
     if (embeddedStore.baseUrl) {
       url = `${embeddedStore.baseUrl}${url}`.replaceAll('\/\/#', '\/#')
     }
@@ -327,6 +328,7 @@ const embeddedStore = useEmbedded()
 
 const backHandler = (url: string) => {
   if (isEmbedded.value) {
+    wsCache.set(`db-info-id`, dvInfo.value.id)
     embeddedStore.clearState()
     useEmitt().emitter.emit('changeCurrentComponent', 'DashboardPanel')
     return
@@ -922,7 +924,7 @@ const initOpenHandler = newWindow => {
         background-color: #050e21;
         outline: none;
         border: 1px solid #295acc;
-        border-radius: 4px;
+        border-radius: 6px;
         padding: 0 4px;
         height: 100%;
       }

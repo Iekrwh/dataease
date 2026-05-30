@@ -3,11 +3,12 @@ import icon_drag_outlined from '@/assets/svg/icon_drag_outlined.svg'
 import icon_deleteTrash_outlined from '@/assets/svg/icon_delete-trash_outlined.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import { propTypes } from '@/utils/propTypes'
-import { computed, onBeforeMount, PropType, toRefs, inject } from 'vue'
+import { computed, onBeforeMount, PropType, toRefs } from 'vue'
 import { useI18n } from '@/hooks/web/useI18n'
 import { KeyValue } from './ApiTestModel.js'
 import { guid } from '@/views/visualized/data/dataset/form/util'
 import draggable from 'vuedraggable'
+import { getApiParamFieldKey, getApiParamFieldValue } from './api-param-field'
 
 export interface Item {
   name: string
@@ -39,10 +40,6 @@ const { t } = useI18n()
 const keyText = computed(() => {
   return props.keyPlaceholder || t('datasource.key')
 })
-const valueText = computed(() => {
-  return props.valuePlaceholder || t('datasource.value')
-})
-
 const { parameters, suggestions } = toRefs(props)
 
 onBeforeMount(() => {
@@ -103,7 +100,6 @@ const createFilter = (queryString: string) => {
 const changeNameType = element => {
   element.value = ''
 }
-const activeName = inject('api-active-name')
 const options = [
   {
     label: t('data_source.parameter'),
@@ -148,6 +144,18 @@ const timeFunLists = [
   {
     label: t('data_source.that_day') + '（yyyy/MM/dd）',
     value: 'currentDay yyyy/MM/dd'
+  },
+  {
+    label: t('data_source.previous_day') + '（yyyy-MM-dd）',
+    value: 'yesterday yyyy-MM-dd'
+  },
+  {
+    label: t('data_source.previous_day') + '（yyyy/MM/dd）',
+    value: 'yesterday yyyy/MM/dd'
+  },
+  {
+    label: t('data_source.timestamp'),
+    value: 'currentTimestamp'
   }
 ]
 </script>
@@ -213,10 +221,10 @@ const timeFunLists = [
                 style="width: 100%"
               >
                 <el-option
-                  v-for="item in valueList"
-                  :key="item.originName"
+                  v-for="(item, index) in valueList"
+                  :key="getApiParamFieldKey(item, index)"
                   :label="item.name"
-                  :value="item.originName"
+                  :value="getApiParamFieldValue(item)"
                 />
               </el-select>
               <el-select

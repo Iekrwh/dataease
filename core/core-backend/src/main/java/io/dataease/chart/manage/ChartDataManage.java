@@ -13,13 +13,13 @@ import io.dataease.dataset.manage.PermissionManage;
 import io.dataease.dataset.utils.DatasetUtils;
 import io.dataease.engine.sql.SQLProvider;
 import io.dataease.engine.trans.*;
-import io.dataease.engine.utils.SQLUtils;
 import io.dataease.engine.utils.Utils;
 import io.dataease.exception.DEException;
 import io.dataease.extensions.datasource.api.PluginManageApi;
 import io.dataease.extensions.datasource.dto.DatasetTableFieldDTO;
 import io.dataease.extensions.datasource.dto.DatasourceRequest;
 import io.dataease.extensions.datasource.dto.DatasourceSchemaDTO;
+import io.dataease.extensions.datasource.dto.TableFieldWithValue;
 import io.dataease.extensions.datasource.factory.ProviderFactory;
 import io.dataease.extensions.datasource.model.SQLMeta;
 import io.dataease.extensions.datasource.provider.Provider;
@@ -92,6 +92,8 @@ public class ChartDataManage {
             view.setChartExtRequest(chartExtRequest);
         }
 
+        chartViewManege.checkLinkChart(view);
+
         //excel导出，如果是从仪表板获取图表数据，则仪表板的查询模式，查询结果的数量，覆盖图表对应的属性
         if (view.getIsExcelExport()) {
             view.setResultMode(ChartConstants.VIEW_RESULT_MODE.CUSTOM);
@@ -157,12 +159,17 @@ public class ChartDataManage {
 
                 boolean hasParameters = false;
                 if (CollectionUtils.isNotEmpty(sqlVariables)) {
-                    for (SqlVariableDetails parameter : Optional.ofNullable(request.getParameters()).orElse(new ArrayList<>())) {
-                        String parameterId = StringUtils.endsWith(parameter.getId(), START_END_SEPARATOR) ? parameter.getId().split(START_END_SEPARATOR)[0] : parameter.getId();
-                        if (sqlVariables.stream().map(SqlVariableDetails::getId).collect(Collectors.toList()).contains(parameterId)) {
-                            hasParameters = true;
+                    if(fieldId.indexOf("|DE|")>-1){
+                        hasParameters = true;
+                    }else{
+                        for (SqlVariableDetails parameter : Optional.ofNullable(request.getParameters()).orElse(new ArrayList<>())) {
+                            String parameterId = StringUtils.endsWith(parameter.getId(), START_END_SEPARATOR) ? parameter.getId().split(START_END_SEPARATOR)[0] : parameter.getId();
+                            if (sqlVariables.stream().map(SqlVariableDetails::getId).collect(Collectors.toList()).contains(parameterId)) {
+                                hasParameters = true;
+                            }
                         }
                     }
+
                 }
 
                 if (hasParameters) {
@@ -345,14 +352,12 @@ public class ChartDataManage {
 
         formatResult.getContext().put("drillAxis", drillAxis);
 
-        //转义特殊字符
+        // 保存原始值，不再在此处预转义，由后面的 sanitizeSqlLiteral 统一负责转义
         extFilterList.forEach(ele -> {
             if (ObjectUtils.isNotEmpty(ele.getValue())) {
-                List<String> collect = ele.getValue().stream().map(SQLUtils::transKeyword).collect(Collectors.toList());
                 if (CollectionUtils.isEmpty(ele.getOriginValue())) {
                     ele.setOriginValue(ele.getValue());
                 }
-                ele.setValue(collect);
             }
         });
         // 视图自定义过滤逻辑
@@ -368,7 +373,6 @@ public class ChartDataManage {
             fieldCustomFilter = customLinkageFilter;
         }
         chartFilterTreeService.searchFieldAndSet(fieldCustomFilter);
-        fieldCustomFilter = chartFilterTreeService.charReplace(fieldCustomFilter);
         // 获取dsMap,union sql
         Map<String, Object> sqlMap = datasetSQLManage.getUnionSQLForEdit(table, chartExtRequest);
         String sql = (String) sqlMap.get("sql");
@@ -709,7 +713,7 @@ public class ChartDataManage {
         }
 
         // 获取dsMap,union sql
-        Map<String, Object> sqlMap = datasetSQLManage.getUnionSQLForEdit(table, null);
+        Map<String, Object> sqlMap = datasetSQLManage.getUnionSQLForEdit(table, null, null, false);
         String sql = (String) sqlMap.get("sql");
         Map<Long, DatasourceSchemaDTO> dsMap = (Map<Long, DatasourceSchemaDTO>) sqlMap.get("dsMap");
         List<String> dsList = new ArrayList<>();
@@ -726,6 +730,10 @@ public class ChartDataManage {
         DatasourceRequest datasourceRequest = new DatasourceRequest();
         datasourceRequest.setDsList(dsMap);
         datasourceRequest.setIsCross(crossDs);
+        List<TableFieldWithValue> tableFieldWithValues = (List<TableFieldWithValue>) sqlMap.get("tableFieldWithValues");
+        if (CollectionUtils.isNotEmpty(tableFieldWithValues)) {
+            datasourceRequest.setTableFieldWithValues(tableFieldWithValues.stream().map(TableFieldWithValue::copy).toList());
+        }
 
         Provider provider;
         if (crossDs) {
@@ -763,6 +771,12 @@ public class ChartDataManage {
                 Dimension2SQLObj.dimension2sqlObj(sqlMeta, xFields, transFields(allFields), crossDs, dsMap, Utils.getParams(transFields(allFields)), view.getCalParams(), pluginManage);
                 Quota2SQLObj.quota2sqlObj(sqlMeta, yAxis, transFields(allFields), crossDs, dsMap, Utils.getParams(transFields(allFields)), view.getCalParams(), pluginManage);
                 querySql = SQLProvider.createQuerySQL(sqlMeta, true, needOrder, view);
+            } else if (StringUtils.equalsIgnoreCase(view.getType(), "multi-scatter")) {
+                List<ChartViewFieldDTO> allDimFields = new ArrayList<>();
+                allDimFields.addAll(xAxis);
+                allDimFields.addAll(yAxis);
+                Dimension2SQLObj.dimension2sqlObj(sqlMeta, allDimFields, transFields(allFields), crossDs, dsMap, Utils.getParams(transFields(allFields)), view.getCalParams(), pluginManage);
+                querySql = SQLProvider.createQuerySQL(sqlMeta, false, needOrder, view);
             } else if (StringUtils.containsIgnoreCase(view.getType(), "scatter")) {
                 List<ChartViewFieldDTO> yFields = new ArrayList<>();
                 yFields.addAll(yAxis);
@@ -781,7 +795,7 @@ public class ChartDataManage {
 
             querySql = provider.rebuildSQL(querySql, sqlMeta, crossDs, dsMap);
             datasourceRequest.setQuery(querySql);
-            logger.debug("calcite chart get field enum sql: " + querySql);
+            logger.debug("calcite chart get field enum sql: {}", querySql);
 
             data = (List<String[]>) provider.fetchResultField(datasourceRequest).get("data");
         }

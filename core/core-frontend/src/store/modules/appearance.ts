@@ -168,7 +168,7 @@ export const useAppearanceStore = defineStore('appearanceStore', {
     setCurrentFont(name) {
       const currentFont = this.fontList.find(ele => ele.name === name)
       if (currentFont) {
-        let fontStyleElement = document.querySelector(`#de-custom_font${name}`)
+        let fontStyleElement = document.querySelector(`[id="de-custom_font${name}"]`)
         if (!fontStyleElement) {
           fontStyleElement = document.createElement('style')
           fontStyleElement.setAttribute('id', `de-custom_font${name}`)
@@ -289,6 +289,12 @@ export const useAppearanceStore = defineStore('appearanceStore', {
         document.documentElement.style.setProperty('--ed-color-primary', this.customColor)
         document.documentElement.style.setProperty('--van-blue', this.customColor)
         document.documentElement.style.setProperty(
+          '--ed-color-primary_b50',
+          colorFunctions
+            .mix(new colorTree('ffffff'), new colorTree(this.customColor.substr(1)), { value: 90 })
+            .toRGB()
+        )
+        document.documentElement.style.setProperty(
           '--ed-color-primary-light-5',
           colorFunctions
             .mix(new colorTree('ffffff'), new colorTree(this.customColor.substr(1)), { value: 40 })
@@ -298,6 +304,12 @@ export const useAppearanceStore = defineStore('appearanceStore', {
           '--ed-color-primary-light-3',
           colorFunctions
             .mix(new colorTree('ffffff'), new colorTree(this.customColor.substr(1)), { value: 15 })
+            .toRGB()
+        )
+        document.documentElement.style.setProperty(
+          '--ed-color-primary-dark-20',
+          colorFunctions
+            .mix(new colorTree('000000'), new colorTree(this.customColor.substr(1)), { value: 20 })
             .toRGB()
         )
         document.documentElement.style.setProperty('--ed-color-primary-1a', `${this.customColor}1a`)
@@ -313,10 +325,12 @@ export const useAppearanceStore = defineStore('appearanceStore', {
         document.documentElement.style.setProperty('--ed-color-primary', '#3370FF')
         document.documentElement.style.removeProperty('--ed-color-primary-light-3')
         document.documentElement.style.removeProperty('--ed-color-primary-light-5')
+        document.documentElement.style.removeProperty('--ed-color-primary_b50')
         document.documentElement.style.removeProperty('--ed-color-primary-1a')
         document.documentElement.style.removeProperty('--ed-color-primary-33')
         document.documentElement.style.removeProperty('--ed-color-primary-99')
         document.documentElement.style.removeProperty('--ed-color-primary-dark-2')
+        document.documentElement.style.removeProperty('--ed-color-primary-dark-20')
       }
       this.bg = data.bg
       this.login = data.login

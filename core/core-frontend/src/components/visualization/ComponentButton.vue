@@ -7,7 +7,7 @@ import { ElCol } from 'element-plus-secondary'
 const props = defineProps({
   title: propTypes.string,
   tips: propTypes.string,
-  iconName: propTypes.string,
+  iconName: propTypes.object,
   showSplitLine: propTypes.bool,
   active: propTypes.bool
 })
@@ -41,12 +41,12 @@ const emits = defineEmits(['customClick'])
   cursor: pointer;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: 6px;
   color: #ffffff99;
   position: relative;
   &::after {
     content: '';
-    border-radius: 4px;
+    border-radius: 6px;
     display: none;
     position: absolute;
     width: calc(100% + 10px);

@@ -1,6 +1,6 @@
 package io.dataease.datasource.type;
 
-import io.dataease.exception.DEException;
+import io.dataease.datasource.security.JdbcUrlSecurityPolicy;
 import io.dataease.extensions.datasource.vo.DatasourceConfiguration;
 import lombok.Data;
 import org.apache.commons.lang3.StringUtils;
@@ -16,23 +16,21 @@ public class Oracle extends DatasourceConfiguration {
     private String extraParams = "";
 
     public String getJdbc() {
+        String jdbcUrl;
         if(StringUtils.isNoneEmpty(getUrlType()) && !getUrlType().equalsIgnoreCase("hostName")){
-            if (!getJdbcUrl().startsWith("jdbc:oracle")) {
-                DEException.throwException("Illegal jdbcUrl: " + getJdbcUrl());
-            }
-            return getJdbcUrl();
-        }
-        if (StringUtils.isNotEmpty(getConnectionType()) && getConnectionType().equalsIgnoreCase("serviceName")) {
-            return "jdbc:oracle:thin:@HOSTNAME:PORT/DATABASE"
+            jdbcUrl = getJdbcUrl();
+        } else if (StringUtils.isNotEmpty(getConnectionType()) && getConnectionType().equalsIgnoreCase("serviceName")) {
+            jdbcUrl = "jdbc:oracle:thin:@HOSTNAME:PORT/DATABASE"
                     .replace("HOSTNAME", getLHost().trim())
                     .replace("PORT", getLPort().toString().trim())
                     .replace("DATABASE", getDataBase().trim());
-        }else {
-            return "jdbc:oracle:thin:@HOSTNAME:PORT:DATABASE"
+        } else {
+            jdbcUrl = "jdbc:oracle:thin:@HOSTNAME:PORT:DATABASE"
                     .replace("HOSTNAME", getLHost().trim())
                     .replace("PORT", getLPort().toString().trim())
                     .replace("DATABASE", getDataBase().trim());
         }
+        return JdbcUrlSecurityPolicy.validate("oracle", getDriver(), jdbcUrl, getExtraParams());
     }
 
     private static final Pattern SERVICE_PATTERN = Pattern.compile(":@//[^/]+/([^?]+)");

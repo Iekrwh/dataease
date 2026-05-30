@@ -45,7 +45,7 @@ defineProps({
 })
 const desktop = wsCache.get('app.desktop')
 const panelKeyword = ref()
-const activeName = ref('recent')
+const activeName = ref('store')
 const activeCommand = ref('all_types')
 const state = reactive({
   tableData: [],
@@ -146,8 +146,8 @@ const loadTableData = () => {
 }
 
 const baseTablePaneList = ref([
-  { title: t('work_branch.recently_used'), name: 'recent', disabled: false },
   { title: t('work_branch.my_collection'), name: 'store', disabled: false },
+  { title: t('work_branch.recently_used'), name: 'recent', disabled: false },
   { title: t('visualization.share_out'), name: 'share', disabled: false }
 ])
 
@@ -182,7 +182,7 @@ watch(
 onMounted(() => {
   !!busiAuthList.length &&
     handleClick({
-      paneName: 'recent',
+      paneName: 'store',
       uid: 0,
       slots: undefined,
       props: undefined,
@@ -282,7 +282,7 @@ const getEmptyDesc = (): string => {
 
 <template>
   <div
-    class="dashboard-type"
+    class="dashboard-type border-radius-12"
     :class="expand && 'expand'"
     v-if="tablePaneList.length"
     v-loading="loading"
@@ -516,10 +516,10 @@ const getEmptyDesc = (): string => {
 
 <style lang="less" scoped>
 .dashboard-type {
-  padding: 8px 24px 0 24px;
+  padding: 8px 24px 24px 24px;
   background: #fff;
-  border-radius: 4px;
-  height: calc(100% - 280px);
+  border-radius: 6px;
+  min-height: calc(100% - 280px);
   margin-top: 16px;
 
   .select-type-list {
@@ -580,7 +580,7 @@ const getEmptyDesc = (): string => {
       font-size: 18px;
       padding: 3px;
       margin-right: 12px;
-      border-radius: 4px;
+      border-radius: 6px;
       color: #fff;
     }
     .name-star {
@@ -616,7 +616,16 @@ const getEmptyDesc = (): string => {
 </style>
 <style lang="less">
 .menu-panel-select_popper {
-  width: 140px;
+  min-width: 140px;
   background: #fff;
+}
+.dashboard-type {
+  .name-content {
+    display: flex;
+    align-items: center;
+    .ed-icon svg {
+      border-radius: 6px;
+    }
+  }
 }
 </style>

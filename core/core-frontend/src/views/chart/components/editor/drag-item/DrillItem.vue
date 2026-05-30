@@ -186,6 +186,7 @@ onMounted(() => {
             :class="{ 'sort-status': index !== 0 && item.sort !== 'none' }"
           >
             <span class="item-name">{{ item.chartShowName ? item.chartShowName : item.name }}</span>
+            <span :data-id="item.id" class="node-id_private"></span>
           </span>
         </el-tooltip>
         <el-icon class="child remove-icon" size="14px">
@@ -348,14 +349,14 @@ onMounted(() => {
   height: 28px;
   line-height: 28px;
   display: flex;
-  border-radius: 4px;
+  border-radius: 6px;
   box-sizing: border-box;
   white-space: nowrap;
   width: 100%;
   justify-content: space-between;
   align-items: center;
   background-color: #3370ff0a;
-  border: 1px solid var(--ed-color-primary);
+  border: 1px solid var(--ed-color-primary) !important;
 }
 
 .item-axis:hover {

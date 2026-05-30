@@ -1,5 +1,5 @@
 import type { Column, ColumnOptions } from '@antv/g2plot/esm/plots/column'
-import { cloneDeep, defaults, each, groupBy, isEmpty } from 'lodash-es'
+import { cloneDeep, defaults, each, groupBy, isEmpty, merge } from 'lodash-es'
 import {
   G2PlotChartView,
   G2PlotDrawOptions
@@ -23,6 +23,7 @@ import {
 import {
   configPlotTooltipEvent,
   configRoundAngle,
+  configXAxisLengthLimit,
   getLabel,
   getPadding,
   getTooltipContainer,
@@ -48,6 +49,7 @@ export class Bar extends G2PlotChartView<ColumnOptions, Column> {
   properties = BAR_EDITOR_PROPERTY
   propertyInner = {
     ...BAR_EDITOR_PROPERTY_INNER,
+    'x-axis-selector': [...BAR_EDITOR_PROPERTY_INNER['x-axis-selector'], 'showLengthLimit'],
     'basic-style-selector': [...BAR_EDITOR_PROPERTY_INNER['basic-style-selector'], 'seriesColor'],
     'label-selector': ['vPosition', 'seriesLabelFormatter', 'showExtremum'],
     'tooltip-selector': [
@@ -134,6 +136,7 @@ export class Bar extends G2PlotChartView<ColumnOptions, Column> {
     }
     extremumEvt(newChart, chart, options, container)
     configPlotTooltipEvent(chart, newChart)
+    configXAxisLengthLimit(chart, newChart)
     return newChart
   }
 
@@ -239,6 +242,23 @@ export class Bar extends G2PlotChartView<ColumnOptions, Column> {
     }
 
     return options
+  }
+
+  protected configXAxis(chart: Chart, options: ColumnOptions): ColumnOptions {
+    const tmpOptions = super.configXAxis(chart, options)
+    if (!tmpOptions.xAxis) {
+      return tmpOptions
+    }
+    const xAxis = parseJson(chart.customStyle).xAxis
+    if (tmpOptions.xAxis.label) {
+      const { lengthLimit } = xAxis.axisLabel
+      defaults(tmpOptions.xAxis.label, {
+        formatter: value => {
+          return value?.length > lengthLimit ? value.substring(0, lengthLimit) + '...' : value
+        }
+      })
+    }
+    return tmpOptions
   }
 
   protected configYAxis(chart: Chart, options: ColumnOptions): ColumnOptions {
@@ -390,7 +410,7 @@ export class StackBar extends Bar {
         obj.value = res ?? ''
         return obj
       },
-      container: getTooltipContainer(`tooltip-${chart.id}`),
+      container: getTooltipContainer(`tooltip-${chart.id}`, chart.container),
       itemTpl: TOOLTIP_TPL,
       enterable: true
     }
@@ -401,6 +421,43 @@ export class StackBar extends Bar {
   }
 
   protected configColor(chart: Chart, options: ColumnOptions): ColumnOptions {
+    const customStyle = parseJson(chart.customStyle)
+    const { sort } = customStyle.legend
+    const extStack = chart.extStack[0]
+    if ((!sort || sort === 'none') && extStack?.customSort?.length > 0) {
+      // 图例自定义排序
+      const sort = extStack.customSort ?? []
+      if (sort?.length) {
+        // 用值域限定排序，有可能出现新数据但是未出现在图表上，所以这边要遍历一下子维度，加到后面，让新数据显示出来
+        const data = options.data
+        const cats =
+          data?.reduce((p, n) => {
+            const cat = n['category']
+            if (cat && !p.includes(cat)) {
+              p.push(cat)
+            }
+            return p
+          }, []) || []
+        const values = sort.reduce((p, n) => {
+          if (cats.includes(n)) {
+            const index = cats.indexOf(n)
+            if (index !== -1) {
+              cats.splice(index, 1)
+            }
+            p.push(n)
+          }
+          return p
+        }, [])
+        cats.length > 0 && values.push(...cats)
+        options.meta = {
+          ...options.meta,
+          category: {
+            type: 'cat',
+            values
+          }
+        }
+      }
+    }
     return this.configStackColor(chart, options)
   }
 
@@ -437,41 +494,6 @@ export class StackBar extends Bar {
       return optionTmp
     }
     const extStack = chart.extStack[0]
-    if (extStack?.customSort?.length > 0) {
-      // 图例自定义排序
-      const sort = extStack.customSort ?? []
-      if (sort?.length) {
-        // 用值域限定排序，有可能出现新数据但是未出现在图表上，所以这边要遍历一下子维度，加到后面，让新数据显示出来
-        const data = optionTmp.data
-        const cats =
-          data?.reduce((p, n) => {
-            const cat = n['category']
-            if (cat && !p.includes(cat)) {
-              p.push(cat)
-            }
-            return p
-          }, []) || []
-        const values = sort.reduce((p, n) => {
-          if (cats.includes(n)) {
-            const index = cats.indexOf(n)
-            if (index !== -1) {
-              cats.splice(index, 1)
-            }
-            p.push(n)
-          }
-          return p
-        }, [])
-        cats.length > 0 && values.push(...cats)
-        optionTmp.meta = {
-          ...optionTmp.meta,
-          category: {
-            type: 'cat',
-            values
-          }
-        }
-      }
-    }
-
     const customStyle = parseJson(chart.customStyle)
     let size
     if (customStyle && customStyle.legend) {
@@ -540,6 +562,12 @@ export class StackBar extends Bar {
 
   public setupSeriesColor(chart: ChartObj, data?: any[]): ChartBasicStyle['seriesColor'] {
     return setUpStackSeriesColor(chart, data)
+  }
+
+  setupDefaultOptions(chart: ChartObj): ChartObj {
+    const chartTmp = super.setupDefaultOptions(chart)
+    chartTmp.customAttr.label.showStackQuota = true
+    return chartTmp
   }
 
   protected setupOptions(chart: Chart, options: ColumnOptions): ColumnOptions {
@@ -788,7 +816,7 @@ export class GroupStackBar extends StackBar {
         obj.value = valueFormatter(param.value, tooltipAttr.tooltipFormatter)
         return obj
       },
-      container: getTooltipContainer(`tooltip-${chart.id}`),
+      container: getTooltipContainer(`tooltip-${chart.id}`, chart.container),
       itemTpl: TOOLTIP_TPL,
       enterable: true
     }
@@ -798,8 +826,20 @@ export class GroupStackBar extends StackBar {
     }
   }
 
+  protected configData(chart: Chart, options: ColumnOptions): ColumnOptions {
+    if (!chart.xAxisExt?.length) {
+      options.isGroup = false
+    }
+    if (!chart.extStack?.length) {
+      options.isStack = false
+      options.groupField = 'category'
+    }
+    return options
+  }
+
   protected setupOptions(chart: Chart, options: ColumnOptions): ColumnOptions {
     return flow(
+      this.configData,
       this.configTheme,
       this.configEmptyDataStrategy,
       this.configColor,
@@ -874,7 +914,7 @@ export class PercentageStackBar extends GroupStackBar {
         obj.value = (Math.round(param.value * 10000) / 100).toFixed(l.reserveDecimalCount) + '%'
         return obj
       },
-      container: getTooltipContainer(`tooltip-${chart.id}`),
+      container: getTooltipContainer(`tooltip-${chart.id}`, chart.container),
       itemTpl: TOOLTIP_TPL,
       enterable: true
     }

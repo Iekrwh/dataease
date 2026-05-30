@@ -15,6 +15,8 @@ import { valueFormatter } from '@/views/chart/components/js/formatter'
 import { storeToRefs } from 'pinia'
 import { isDashboard, trackBarStyleCheck } from '@/utils/canvasUtils'
 import ViewTrackBar from '@/components/visualization/ViewTrackBar.vue'
+import { hasNextDrillLevel } from '@/views/chart/components/views/util/drill'
+import { ElMessage } from 'element-plus-secondary'
 
 const props = defineProps({
   // 公共参数集
@@ -75,6 +77,7 @@ const viewTrack = ref(null)
 const indicatorRef = ref(null)
 const errMsg = ref('')
 const isError = ref(false)
+const drillFilters = ref([])
 const state = reactive({
   pointParam: null,
   data: null,
@@ -255,6 +258,7 @@ const showSuffix = ref<boolean>(DEFAULT_INDICATOR_STYLE.suffixEnable)
 const suffixContent = ref('')
 
 const indicatorNameShow = ref(false)
+const indicatorNamePositionBottom = ref(true)
 
 const indicatorNameWrapperStyle = reactive<CSSProperties>({
   'margin-top': DEFAULT_INDICATOR_NAME_STYLE.nameValueSpacing + 'px'
@@ -369,8 +373,10 @@ const renderChart = async view => {
       }
       indicatorNameWrapperStyle['margin-top'] =
         (indicatorName.nameValueSpacing ?? DEFAULT_INDICATOR_NAME_STYLE.nameValueSpacing) + 'px'
+      indicatorNamePositionBottom.value = indicatorName.namePosition !== 'top'
     } else {
       indicatorNameShow.value = false
+      indicatorNamePositionBottom.value = false
     }
   }
 }
@@ -387,6 +393,7 @@ const calcData = (view, callback) => {
           errMsg.value = res.msg
         } else {
           chartData.value = res?.data as Partial<Chart['data']>
+          drillFilters.value = res?.drillFilters || []
           emit('onDrillFilters', res?.drillFilters)
 
           dvMainStore.setViewDataDetails(view.id, res)
@@ -395,9 +402,11 @@ const calcData = (view, callback) => {
         callback?.()
       })
       .catch(() => {
+        drillFilters.value = []
         callback?.()
       })
   } else {
+    drillFilters.value = []
     callback?.()
   }
 }
@@ -489,7 +498,8 @@ const trackMenu = computed(() => {
     (!mobileInPc.value || inMobile.value) &&
     trackMenuInfo.push('jump')
   linkageCount && view.value?.linkageActive && trackMenuInfo.push('linkage')
-  view.value.drillFields.length && trackMenuInfo.push('drill')
+  hasNextDrillLevel(view.value.drillFields, drillFilters.value.length) &&
+    trackMenuInfo.push('drill')
   // 如果同时配置jump linkage drill 切配置联动时同时下钻 在实际只显示两个 '跳转' '联动和下钻'
   if (trackMenuInfo.length === 3 && props.element.actionSelection.linkageActive === 'auto') {
     trackMenuInfo = ['jump', 'linkageAndDrill']
@@ -522,6 +532,10 @@ const action = param => {
   pointClickTrans()
   // 联动 跳转
   if (trackMenu.value.length < 2) {
+    if (view.value.drillFields.length > 0 && trackMenu.value.length === 0) {
+      ElMessage.error(t('chart.last_layer'))
+      return
+    }
     // 只有一个事件直接调用
     trackClick(trackMenu.value[0])
   } else {
@@ -584,7 +598,7 @@ defineExpose({
     ref="indicatorRef"
     :class="{ 'menu-point': showCursor }"
     :style="contentStyle"
-    @mousedown="onPointClick"
+    @mouseup="onPointClick"
   >
     <view-track-bar
       ref="viewTrack"
@@ -595,11 +609,16 @@ defineExpose({
       @trackClick="trackClick"
       :is-data-v-mobile="dataVMobile"
     />
+    <div v-if="indicatorNameShow && !indicatorNamePositionBottom">
+      <span :style="indicatorNameClass">{{ resultName }}</span>
+      <div :style="indicatorNameWrapperStyle"></div>
+    </div>
     <div>
       <span :style="indicatorClass">{{ formattedResult }}</span>
       <span :style="indicatorSuffixClass" v-if="showSuffix">{{ suffixContent }}</span>
     </div>
-    <div :style="indicatorNameWrapperStyle" v-if="indicatorNameShow">
+    <div v-if="indicatorNameShow && indicatorNamePositionBottom">
+      <div :style="indicatorNameWrapperStyle"></div>
       <span :style="indicatorNameClass">{{ resultName }}</span>
     </div>
   </div>

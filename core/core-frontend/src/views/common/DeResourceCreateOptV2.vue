@@ -1,13 +1,13 @@
 <template>
   <el-dialog
-    class="market-create-dialog"
+    class="market-create-dialog border-radius-12"
     v-model="state.dialogShow"
     width="80vw"
     height="90vh"
     :before-close="close"
     @submit.prevent
   >
-    <template-market ref="templateMarketCreateRef" @close="close"></template-market>
+    <template-market isDialog ref="templateMarketCreateRef" @close="close"></template-market>
   </el-dialog>
 </template>
 
@@ -36,7 +36,7 @@ defineExpose({
 
 <style lang="less">
 .market-create-dialog {
-  border-radius: 4px !important;
+  padding: 0 !important;
 
   overflow: hidden;
   .ed-dialog__body {

@@ -13,11 +13,14 @@ import {
   DEFAULT_MISC
 } from '@/views/chart/components/editor/util/chart'
 import { ElCol, ElFormItem, ElRow, ElSpace } from 'element-plus-secondary'
-import { cloneDeep } from 'lodash-es'
+import { cloneDeep, get, set } from 'lodash-es'
 import { useEmitt } from '@/hooks/web/useEmitt'
 import { getDynamicColorScale } from '@/views/chart/components/js/util'
 import CustomSortEdit from '@/views/chart/components/editor/drag-item/components/CustomSortEdit.vue'
-
+import { dvMainStoreWithOut } from '@/store/modules/data-visualization/dvMain'
+import { storeToRefs } from 'pinia'
+const dvMainStore = dvMainStoreWithOut()
+const { batchOptStatus } = storeToRefs(dvMainStore)
 const { t } = useI18n()
 
 const props = withDefaults(
@@ -34,7 +37,7 @@ useEmitt({
 })
 const emit = defineEmits(['onLegendChange', 'onMiscChange'])
 const toolTip = computed(() => {
-  return props.themes === 'dark' ? 'light' : 'dark'
+  return props.themes || 'dark'
 })
 watch(
   () => props.chart.customStyle,
@@ -99,6 +102,13 @@ const changeLegendStyle = prop => {
 }
 
 const changeMisc = prop => {
+  // 仅对子弹图区间图例字段做合并保护，避免覆盖 fixedRange/showType。
+  if (typeof prop === 'string' && prop.startsWith('bullet.')) {
+    const latestMisc = cloneDeep(props.chart?.customAttr?.misc || state.legendForm.miscForm)
+    set(latestMisc, prop, get(state.legendForm.miscForm, prop))
+    emit('onMiscChange', { data: latestMisc, requestData: true }, prop)
+    return
+  }
   emit('onMiscChange', { data: state.legendForm.miscForm, requestData: true }, prop)
 }
 
@@ -338,10 +348,15 @@ onMounted(() => {
       />
     </el-form-item>
     <div
-      style="flex: 1; display: flex"
+      style="flex: 1; display: flex; width: 100%"
       v-if="showProperty('showRange') && state.legendForm.showRange"
     >
-      <el-form-item :label="t('chart.icon')" class="form-item" :class="'form-item-' + themes">
+      <el-form-item
+        :label="t('chart.icon')"
+        class="form-item"
+        :class="'form-item-' + themes"
+        style="flex: 1; min-width: 0"
+      >
         <el-select
           :effect="themes"
           v-model="state.legendForm.miscForm.bullet.bar.ranges.symbol"
@@ -356,7 +371,11 @@ onMounted(() => {
           />
         </el-select>
       </el-form-item>
-      <el-form-item class="form-item" :class="'form-item-' + themes" style="padding-left: 8px">
+      <el-form-item
+        class="form-item"
+        :class="'form-item-' + themes"
+        style="flex: 1; min-width: 0; padding-left: 8px"
+      >
         <template #label>&nbsp;</template>
         <el-select
           :effect="themes"
@@ -429,7 +448,7 @@ onMounted(() => {
                 size="small"
                 :effect="themes"
                 v-model="state.legendForm.miscForm.mapAutoLegend"
-                :label="true"
+                :value="true"
                 @change="changeMisc('mapAutoLegend')"
                 style="width: 80px"
               >
@@ -439,7 +458,7 @@ onMounted(() => {
                 size="small"
                 :effect="themes"
                 v-model="state.legendForm.miscForm.mapAutoLegend"
-                :label="false"
+                :value="false"
                 @change="changeMisc('mapAutoLegend')"
               >
                 {{ t('chart.custom_case') }}
@@ -460,7 +479,7 @@ onMounted(() => {
                   size="small"
                   :effect="themes"
                   v-model="state.legendForm.miscForm.mapLegendRangeType"
-                  :label="'quantize'"
+                  :value="'quantize'"
                   @change="changeLegendCustomType('mapLegendRangeType')"
                   style="width: 75px"
                 >
@@ -470,7 +489,7 @@ onMounted(() => {
                   size="small"
                   :effect="themes"
                   v-model="state.legendForm.miscForm.mapLegendRangeType"
-                  :label="'custom'"
+                  :value="'custom'"
                   @change="changeLegendCustomType('mapLegendRangeType')"
                 >
                   {{ t('chart.legend_custom_range') }}
@@ -573,8 +592,8 @@ onMounted(() => {
         size="small"
         @change="changeLegendStyle('orient')"
       >
-        <el-radio :effect="themes" label="horizontal">{{ t('chart.horizontal') }}</el-radio>
-        <el-radio :effect="themes" label="vertical">{{ t('chart.vertical') }}</el-radio>
+        <el-radio :effect="themes" value="horizontal">{{ t('chart.horizontal') }}</el-radio>
+        <el-radio :effect="themes" value="vertical">{{ t('chart.vertical') }}</el-radio>
       </el-radio-group>
     </el-form-item>
 
@@ -590,7 +609,7 @@ onMounted(() => {
           v-model="state.legendForm.hPosition"
           @change="changeLegendStyle('hPosition')"
         >
-          <el-radio label="left">
+          <el-radio value="left">
             <el-tooltip :effect="toolTip" placement="top">
               <template #content>
                 {{ t('chart.text_pos_left') }}
@@ -607,7 +626,7 @@ onMounted(() => {
               </div>
             </el-tooltip>
           </el-radio>
-          <el-radio label="center" :disabled="state.legendForm.vPosition === 'center'">
+          <el-radio value="center" :disabled="state.legendForm.vPosition === 'center'">
             <el-tooltip :effect="toolTip" placement="top">
               <template #content>
                 {{ t('chart.text_pos_center') }}
@@ -627,7 +646,7 @@ onMounted(() => {
               </div>
             </el-tooltip>
           </el-radio>
-          <el-radio label="right">
+          <el-radio value="right">
             <el-tooltip :effect="toolTip" placement="top">
               <template #content>
                 {{ t('chart.text_pos_right') }}
@@ -664,7 +683,7 @@ onMounted(() => {
           v-model="state.legendForm.vPosition"
           @change="changeLegendStyle('vPosition')"
         >
-          <el-radio label="top">
+          <el-radio value="top">
             <el-tooltip :effect="toolTip" placement="top">
               <template #content>
                 {{ t('chart.text_pos_top') }}
@@ -681,7 +700,7 @@ onMounted(() => {
               </div>
             </el-tooltip>
           </el-radio>
-          <el-radio label="center" :disabled="state.legendForm.hPosition === 'center'">
+          <el-radio value="center" :disabled="state.legendForm.hPosition === 'center'">
             <el-tooltip :effect="toolTip" placement="top">
               <template #content>
                 {{ t('chart.text_pos_center') }}
@@ -701,7 +720,7 @@ onMounted(() => {
               </div>
             </el-tooltip>
           </el-radio>
-          <el-radio label="bottom">
+          <el-radio value="bottom">
             <el-tooltip :effect="toolTip" placement="top">
               <template #content>
                 {{ t('chart.text_pos_bottom') }}
@@ -726,7 +745,7 @@ onMounted(() => {
     </el-space>
     <el-form-item
       class="form-item"
-      v-if="showProperty('legendSort')"
+      v-if="showProperty('legendSort') && !batchOptStatus"
       :class="'form-item-' + themes"
       :label="t('chart.legend_sort')"
     >
@@ -782,7 +801,7 @@ onMounted(() => {
   width: 24px;
   height: 24px;
   text-align: center;
-  border-radius: 4px;
+  border-radius: 6px;
   padding-top: 4px;
 
   color: #1f2329;
